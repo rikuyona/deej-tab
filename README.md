@@ -1,6 +1,6 @@
 # deej-tab
 
-物理スライダーで、Windows のアプリごとの音量と **Chrome のタブごとの音量** を操作する自作ミキサーです。
+物理スライダーで、Windows / Mac のアプリごとの音量と **Chrome のタブごとの音量** を操作する自作ミキサーです。
 [deej](https://github.com/omriharel/deej) を元に、PC アプリ・Chrome 拡張機能・LED 付きファームウェア・3D プリント用ケース（[MakerWorld](https://makerworld.com/models/3382344)）までまとめてあります。
 
 <p align="center"><img src="docs/images/hero.jpg" alt="deej-tab の完成イメージ" width="720"></p>
@@ -25,7 +25,7 @@
 
 ### PC
 
-- Windows 10 / 11
+- Windows 10 / 11、または macOS 14.2 以降（Mac 版は試験中。[Mac 版について](#mac-版について試験中)）
 - Google Chrome 116 以降（タブの音量を操作する場合）
 
 ### 部品
@@ -81,6 +81,8 @@ D0 / D1 は USB シリアルに使うので空けておきます。
 2. `deej-tab.exe` を起動する
    - 署名していないため「Windows によって PC が保護されました」と出ることがあります。「詳細情報」→「実行」で起動できます
 3. タスクトレイのアイコンをクリックすると設定画面が開きます。「設定」→「コントローラー」でマイコンの COM ポートを選びます
+
+Mac の場合は [Mac 版について](#mac-版について試験中) を見てください。
 
 ### 3. Chrome 拡張機能を入れる
 
@@ -217,10 +219,52 @@ start.bat
 - ケース：`case` フォルダで `pip install numpy trimesh manifold3d` を入れた venv を作り、`python case.py`。出力は `case/out/`
 - 仮スライダー：`tools/fake_sliders.bat` でコントローラーなしに試せます（config.yaml の `com_port` を `socket://127.0.0.1:9000` に）
 
+## Mac 版について（試験中）
+
+### 入れ方
+
+1. `deej-tab-x.y.z-mac.zip` を展開し、`deej-tab.app` を「アプリケーション」フォルダに入れる
+2. 初回は右クリック →「開く」で起動する（Apple の署名をしていないため、ダブルクリックだと開けません）
+3. コントローラーを USB でつなぐ。ふつうは自動で見つかります。見つからなければメニューバーのアイコンから設定画面を開き、「設定」→「コントローラー」で `/dev/cu.usbserial-…` を選ぶ（CH340 のドライバは macOS に入っています）
+4. アプリごとの音量を初めて変えたときに「システムオーディオの録音」の許可を求められるので、許可する
+   （システム設定 → プライバシーとセキュリティ → 画面とシステムオーディオの録音。音を受け取って音量をかけ直すだけで、録音・保存はしません）
+   - 許可するまでの間、アプリの音は消えたままになります
+   - 新しい版に入れ替えても許可は残ります
+
+設定ファイルとログは `~/Library/Application Support/deej-tab/` に作られます。
+
+### Windows 版との違い
+
+- アプリは `.app` の名前で割り当てます（例：`discord.app`、`google chrome.app`）
+- アプリごとの音量は macOS の Process Tap で、アプリの音を受け取って音量をかけ直して出力します。100% のアプリは何もしません
+  - 音量を下げているアプリは、アプリ側で別の出力先を選んでいても Mac の出力先（システム設定のサウンド）から出ます
+  - ごくわずかに音が遅れます（数十ミリ秒）
+- 「システム音」には割り当てられません（Mac に通知音だけの音量がないため）
+- LED を音に合わせるとき、マイクの音の大きさは表示しません（マイクの許可が必要になるため）
+- ショートカットの Win は Command（⌘）、Alt は Option（⌥）です
+- もう一度 `deej-tab.app` を開いても設定画面は出ません。メニューバーのアイコンから開いてください
+
+### ソースから動かす・作る（Mac）
+
+Xcode のコマンドラインツール（`xcode-select --install`）と Python 3 が必要です（Homebrew の Python 3.12 で確認）。
+
+```sh
+cd app
+python3 -m venv .venv-mac
+.venv-mac/bin/pip install -r requirements-mac.txt
+.venv-mac/bin/python build_mac.py --helper-only   # 補助プログラム (mac/deej-tab-helper.swift) を作る
+.venv-mac/bin/python deej_tab.py --no-tray        # ログを見ながら動かす
+.venv-mac/bin/python build_mac.py                 # deej-tab.app と release/deej-tab-x.y.z-mac.zip を作る
+```
+
+ターミナルから動かすときは、システムオーディオの録音の許可はターミナルに対して求められます。
+エディタや Claude Code など、ターミナル以外から動かすと許可のダイアログが出ないまま、音量を変えたアプリの音が消えることがあります。その時は `build_mac.py` で作った `deej-tab.app` で試してください。
+
 ## 仕組み
 
 ```
 Nano ──USB シリアル──▶ deej-tab.exe ──Windows の音量 API──▶ アプリの音量
+                       (Mac: deej-tab.app ──補助プログラム (Core Audio の Process Tap)──▶ アプリの音量)
  (スライダーの値)          │  ▲
                           │  └─ 設定画面 (http://127.0.0.1:8765/)
                           └─WebSocket──▶ Chrome 拡張機能 ──▶ タブの音量

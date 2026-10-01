@@ -1,10 +1,12 @@
 """deej-tab: deej 互換のPCアプリ + Chromeタブ音量用 WebSocket 配信
 
 - Arduino からのシリアル行 "v0|v1|...|vN" (0〜1023) を読み取る
-- config.yaml の slider_mapping に従って Windows の音量を変える (deej 互換)
+- config.yaml の slider_mapping に従って Windows / Mac の音量を変える (deej 互換)
 - 割り当て先が "tab.N" のスライダーは、WebSocket で Chrome 拡張へ送る
 - 設定画面 (ui.html) を http://127.0.0.1:8765/ で配信し、/ui の WebSocket で割り当てを変更する
-- タスクトレイに常駐する (pystray)
+- タスクトレイ (Mac はメニューバー) に常駐する (pystray)
+
+Windows 固有の部品は winsys.py・appcatalog.py、Mac 固有の部品は macsys.py (と補助プログラム mac/)
 """
 
 import asyncio
@@ -40,7 +42,10 @@ ID_RE = re.compile(r"^@ID\|([\w.-]{1,24})\|([\w.]{1,8})\|([0-9A-F]{8})$")
 NOISE_THRESHOLDS = {"none": 0.005, "low": 0.015, "default": 0.025, "high": 0.035}   # none は 1% ごと (位置は 1% 刻みなので 0.01 だと誤差で止まる)
 SPECIAL_TARGETS = {"master", "mic", "system", "deej.current", "deej.unmapped", "deej.game"}
 TAB_RE = re.compile(r"^tab\.([1-9]\d*)$")
-EXE_RE = re.compile(r"^[\w .\-()+&']+\.exe$")
+# アプリの名前: Windows は exe 名、Mac は .app の名前 (どちらも小文字)
+EXE_RE = re.compile(r"^[\w .\-()+&']+\.(exe|app)$")
+IS_MAC = sys.platform == "darwin"
+CHROME_APPS = ("chrome.exe", "google chrome.app")   # タブの音量を拡張機能で変えるブラウザ
 OBS_RE = re.compile(r"^obs:([^\x00-\x1f|]{1,100})$")
 PROFILE_NAME_RE = re.compile(r"^[^\x00-\x1f]{1,24}$")
 DEFAULT_PROFILE = "標準"
@@ -79,14 +84,20 @@ CHANNELS = 6                 # 設定画面に出すスライダー数 (A0〜A5)
 # exe 化 (PyInstaller) した時は、config.yaml とログは exe の隣、ui.html は exe の中
 FROZEN = getattr(sys, "frozen", False)
 APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+if IS_MAC and FROZEN:
+    # .app の中には書き込まない (署名が壊れる・更新で消える) ので、config.yaml とログはユーザーのフォルダ
+    APP_DIR = os.path.join(os.path.expanduser("~/Library/Application Support"), "deej-tab")
+    os.makedirs(APP_DIR, exist_ok=True)
 RES_DIR = getattr(sys, "_MEIPASS", APP_DIR)
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_NAME = "deej-tab"
 CONFIG_ARG = None   # 起動時に config.yaml の場所を指定されたとき (設定画面のプロセスにも渡す)
 # 設定画面用の Chrome プロファイルと、前回合わせたウィンドウの大きさ
-UI_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or APP_DIR, "deej-tab")
+UI_DATA_DIR = (os.path.join(os.path.expanduser("~/Library/Application Support"), "deej-tab") if IS_MAC
+               else os.path.join(os.environ.get("LOCALAPPDATA") or APP_DIR, "deej-tab"))
 UI_PROFILE_DIR = os.path.join(UI_DATA_DIR, "ui-profile")
 WINDOW_FILE = os.path.join(UI_DATA_DIR, "window.json")
+SETTINGS_LOCK = os.path.join(UI_DATA_DIR, "settings.lock")   # Mac: 設定画面を 1 枚だけにする
 DEFAULT_WINDOW = (1045, 1010)   # 論理ピクセル (150% なら実際は 1.5 倍)。window.json がない時だけ使う
 
 LANGUAGES = ("auto", "ja", "en")
@@ -96,6 +107,7 @@ TEXT_EN = {
     "一時停止 (スライダーで音量を変えない)": "Pause (sliders don't change the volume)",
     "プロファイル": "Profile",
     "Windows の起動時に自動で起動": "Start with Windows",
+    "ログイン時に自動で起動": "Start at login",
     "終了": "Quit",
     "deej-tab - 一時停止中 (スライダーで音量は変わりません)": "deej-tab - Paused (sliders don't change the volume)",
     "deej-tab - {port} に接続中": "deej-tab - Connected to {port}",
@@ -104,7 +116,12 @@ TEXT_EN = {
 
 
 def system_language():
-    """Windows の表示言語が日本語なら ja、それ以外は en"""
+    """Windows / Mac の表示言語が日本語なら ja、それ以外は en"""
+    if IS_MAC:
+        import macsys
+        lang = macsys.system_language()
+        if lang:
+            return lang
     if sys.platform == "win32":
         try:
             return "ja" if (ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF) == 0x11 else "en"
@@ -117,6 +134,15 @@ def system_language():
 def resolve_language(language):
     """設定の language (auto / ja / en) から、実際に使う言語 (ja / en)"""
     return system_language() if language == "auto" else language
+
+
+def sysmod():
+    """ホットキー・最前面のアプリの部品 (Windows: winsys / Mac: macsys)"""
+    if IS_MAC:
+        import macsys
+        return macsys
+    import winsys
+    return winsys
 
 
 def tr(text, lang, **kw):
@@ -138,6 +164,10 @@ baud_rate: 9600
 noise_reduction: default
 websocket_port: 8765
 """
+if IS_MAC:
+    # Mac のポート名は差した口ごとに変わるので仮の名前にしておく (見つからなければ USB のポートを探す)
+    DEFAULT_CONFIG = (DEFAULT_CONFIG.replace("discord.exe", "discord.app")
+                      .replace("com_port: COM3", "com_port: /dev/cu.usbserial"))
 
 CONFIG_HEADER = """\
 # deej-tab の設定
@@ -438,7 +468,8 @@ class Config:
             for a in auto_apps:
                 a = str(a).strip().lower()
                 if not EXE_RE.match(a):
-                    raise ValueError(f"アプリの exe 名（例: valorant.exe）を入れてください: {a}")
+                    raise ValueError(f"アプリの exe 名（例: valorant.exe）を入れてください: {a}" if not IS_MAC
+                                     else f"アプリの名前（例: discord.app）を入れてください: {a}")
                 if a not in apps:
                     apps.append(a)
             # 同じアプリは 1 つのプロファイルにだけ (どれに切り替えるか迷わないように)
@@ -836,11 +867,11 @@ class DummyAudio:
 
 class DeejTab:
     def __init__(self, config, audio_factory, catalog=None, system=True):
-        """system: Windows の仕組み (ホットキー・最前面のアプリの確認) を使うか。テストでは使わない"""
+        """system: OS の仕組み (ホットキー・最前面のアプリの確認) を使うか。テストでは使わない"""
         self.config = config
         self.audio_factory = audio_factory
         self.catalog = catalog       # 設定画面に出すアプリ一覧 (appcatalog.AppCatalog)。None なら出さない
-        self.system = system and sys.platform == "win32"
+        self.system = system and sys.platform in ("win32", "darwin")
         self.loop = None
         self.clients = set()         # 拡張機能
         self.ui_clients = set()      # 設定画面
@@ -1181,7 +1212,7 @@ class DeejTab:
     # ---------- 音量を変える ----------
 
     def apply(self, idx, v, audio):
-        """v: 音量 (1.0 = 100%)。Windows の音量は 100% までなので、超える分は Chrome タブ・OBS にだけ効く"""
+        """v: 音量 (1.0 = 100%)。OS の音量は 100% までなので、超える分は Chrome タブ・OBS にだけ効く"""
         targets = self.config.mapping.get(idx, [])
         wv = min(v, 1.0)
         names = set()
@@ -1214,7 +1245,7 @@ class DeejTab:
 
     def apply_app(self, name, v, names):
         """deej.current / deej.game: そのアプリの音量を変える。Chrome なら表示中のタブだけ"""
-        if name == "chrome.exe" and self.config.tab_slots():
+        if name in CHROME_APPS and self.config.tab_slots():
             # Chrome 全体ではなく、表示中のタブだけを拡張機能に変えさせる
             self.broadcast({"type": "current", "value": v})
         elif name and not self.is_reserved_process(name):
@@ -1226,7 +1257,7 @@ class DeejTab:
         name = name.lower()
         if name in self.config.mapped_process_names():
             return True
-        return name == "chrome.exe" and bool(self.config.tab_slots())
+        return name in CHROME_APPS and bool(self.config.tab_slots())
 
     # ---------- LED ----------
 
@@ -1515,7 +1546,7 @@ class DeejTab:
 
     def watch_thread(self):
         """最前面のアプリを見て、deej.game を覚え、プロファイルを自動で切り替える"""
-        import winsys
+        winsys = sysmod()
         winsys.use_physical_pixels()
         tracker = winsys.GameTracker()
         while not self.stop.wait(WATCH_INTERVAL):
@@ -1529,8 +1560,7 @@ class DeejTab:
     def auto_profile_tick(self, fg, pid, alive=None):
         """プロファイルの自動切り替え。
         auto_apps のアプリが前に来たらそのプロファイルに切り替え、そのアプリが終了したら元のプロファイルに戻す"""
-        import winsys
-        alive = alive or winsys.pid_alive
+        alive = alive or sysmod().pid_alive
         a = self.auto
         a["fg"] = fg
         if a["suppressed"] and fg != a["suppressed"]:
@@ -1630,6 +1660,7 @@ class DeejTab:
             "autostart": autostart_enabled(),
             "channels": CHANNELS,
             "system": self.system,
+            "platform": "mac" if IS_MAC else "win",
         }
 
     def ui_status(self):
@@ -1810,8 +1841,7 @@ class DeejTab:
                 self.led_sim.boot(led_now())
             self.led_boot = True
         elif t == "set_hotkey":
-            import winsys
-            spec = winsys.normalize_hotkey(str(msg.get("value") or ""))
+            spec = sysmod().normalize_hotkey(str(msg.get("value") or ""))
             name = msg.get("name")
             if name == "pause":
                 with self.config_lock:
@@ -1862,7 +1892,8 @@ class DeejTab:
         elif t == "refresh_lists":
             await self.send_lists(ws)
         elif t == "fit_window":
-            await asyncio.to_thread(fit_settings_window, msg)
+            if sys.platform == "win32":   # Chrome で開いた設定画面 (Mac は自前のウィンドウだけ)
+                await asyncio.to_thread(fit_settings_window, msg)
         else:
             raise ValueError(f"不明な操作です: {t}")
 
@@ -1998,7 +2029,9 @@ class DeejTab:
         # 設定画面。WebSocket でない GET / には ui.html を返す
         if request.path in ("/", "/index.html") and "upgrade" not in request.headers.get("Connection", "").lower():
             with open(os.path.join(RES_DIR, "ui.html"), encoding="utf-8") as f:
-                response = connection.respond(HTTPStatus.OK, f.read())
+                # 画面の文言を OS に合わせるため、どちらで動いているかを埋め込む
+                page = f.read().replace('<html lang="ja">', f'<html lang="ja" data-platform="{"mac" if IS_MAC else "win"}">', 1)
+                response = connection.respond(HTTPStatus.OK, page)
             del response.headers["Content-Type"]
             response.headers["Content-Type"] = "text/html; charset=utf-8"
             response.headers["Cache-Control"] = "no-store"
@@ -2015,8 +2048,7 @@ class DeejTab:
         self.audio_thread = threading.Thread(target=self.serial_thread, daemon=True, name="serial")
         self.audio_thread.start()
         if self.system:
-            import winsys
-            self.hotkeys = winsys.HotkeyThread(self.on_hotkey)
+            self.hotkeys = sysmod().HotkeyThread(self.on_hotkey)
             self.hotkeys.start()
             self.update_hotkeys()
             threading.Thread(target=self.watch_thread, daemon=True, name="watch").start()
@@ -2046,7 +2078,16 @@ def significantly_different(old, new, threshold):
 
 # ---------------------------------------------------------------- 自動起動・設定画面・トレイ
 
+def autostart_args():
+    """Mac の LaunchAgent に書く起動のコマンド"""
+    if FROZEN:
+        return [sys.executable, "--tray"]
+    return [sys.executable, os.path.abspath(__file__), "--tray"]
+
+
 def autostart_command():
+    if IS_MAC:
+        return " ".join(f'"{a}"' for a in autostart_args())
     if FROZEN:
         return f'"{sys.executable}" --tray'
     pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
@@ -2056,7 +2097,10 @@ def autostart_command():
 
 
 def autostart_registered():
-    """Run に登録されているコマンド (未登録なら None)"""
+    """Run (Mac は LaunchAgent) に登録されているコマンド (未登録なら None)"""
+    if IS_MAC:
+        import macsys
+        return macsys.autostart_registered()
     if sys.platform != "win32":
         return None
     import winreg
@@ -2072,7 +2116,12 @@ def autostart_enabled():
 
 
 def set_autostart(enabled):
-    """Windows ログイン時の自動起動 (HKCU の Run に登録する)"""
+    """ログイン時の自動起動 (Windows は HKCU の Run、Mac は ~/Library/LaunchAgents に登録する)"""
+    if IS_MAC:
+        import macsys
+        macsys.set_autostart(enabled, autostart_args())
+        log.info("自動起動: %s", "オン" if enabled else "オフ")
+        return
     if sys.platform != "win32":
         raise RuntimeError("Windows 以外では使えません")
     import winreg
@@ -2145,6 +2194,13 @@ def find_settings_window(processes=SETTINGS_PROCESSES):
 
 def close_settings_window():
     """開いている設定画面を閉じる (本体を終了する時。つながらない画面だけが残らないように)"""
+    if IS_MAC:
+        import macsys
+        import signal
+        pid = macsys.settings_pid(SETTINGS_LOCK)
+        if pid:
+            os.kill(pid, signal.SIGTERM)
+        return
     if sys.platform != "win32":
         return
     WM_CLOSE = 0x0010
@@ -2158,6 +2214,10 @@ def close_settings_window():
 
 def focus_settings_window():
     """開いている設定画面を手前に出す。見つかれば True"""
+    if IS_MAC:
+        import macsys
+        pid = macsys.settings_pid(SETTINGS_LOCK)
+        return bool(pid) and macsys.activate(pid)
     hwnd = find_settings_window()
     if not hwnd:
         return False
@@ -2302,6 +2362,8 @@ def open_settings(port):
             return
         if FROZEN:
             cmd = [sys.executable, "--settings"]
+        elif IS_MAC:
+            cmd = [sys.executable, os.path.abspath(__file__), "--settings"]
         else:
             pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
             cmd = [pythonw if os.path.exists(pythonw) else sys.executable, os.path.abspath(__file__), "--settings"]
@@ -2330,7 +2392,7 @@ def open_settings(port):
 
 def webview_available():
     import importlib.util
-    return sys.platform == "win32" and importlib.util.find_spec("webview") is not None
+    return sys.platform in ("win32", "darwin") and importlib.util.find_spec("webview") is not None
 
 
 class SettingsApi:
@@ -2343,6 +2405,9 @@ class SettingsApi:
         self._lock = threading.Lock()
 
     def fit(self, msg):
+        if IS_MAC:
+            self._fit_mac(msg)
+            return
         # ページの方が先に準備できて、ウィンドウがまだ出ていないことがある。その時は出てから合わせる
         with self._lock:
             hwnd = self._hwnd
@@ -2358,9 +2423,34 @@ class SettingsApi:
         if msg:
             fit_settings_window(msg, hwnd)
 
-    def pick_exe(self):
-        """割り当てるアプリを exe ファイルから選ぶ。選んだファイルのパス (やめたら None)"""
+    def _fit_mac(self, msg):
+        """Mac: ウィンドウの大きさを中身に合わせる (pywebview の大きさは枠込みの論理ピクセル)"""
         import webview
+        win = self._window
+        if win is None:
+            return
+        frame_w = win.width - float(msg["inner_width"])
+        frame_h = win.height - float(msg["inner_height"])
+        w = round(float(msg["width"]) + frame_w)
+        h = round(float(msg["height"]) + frame_h)
+        try:
+            screen = webview.screens[0]
+            w, h = min(w, screen.width), min(h, screen.height - 40)   # 40: メニューバーと Dock の分
+        except Exception:
+            pass
+        save_window_size(w, h)
+        if abs(win.width - w) <= 2 and abs(win.height - h) <= 2:
+            return
+        win.resize(w, h)
+        log.info("設定画面の大きさ: %dx%d", w, h)
+
+    def pick_exe(self):
+        """割り当てるアプリを exe ファイル (Mac は .app) から選ぶ。選んだファイルのパス (やめたら None)"""
+        import webview
+        if IS_MAC:
+            paths = self._window.create_file_dialog(webview.FileDialog.OPEN, directory="/Applications",
+                                                    file_types=("アプリ (*.app)",))
+            return paths[0] if paths else None
         start = os.environ.get("ProgramFiles", "")
         paths = self._window.create_file_dialog(webview.FileDialog.OPEN, directory=start,
                                                 file_types=("アプリ (*.exe)",))
@@ -2399,8 +2489,11 @@ def style_settings_window(hwnd):
 
 
 def run_settings_window(port):
-    """設定画面を自前のウィンドウ (pywebview = Edge WebView2) で開き、閉じるまで待つ"""
+    """設定画面を自前のウィンドウ (pywebview = Edge WebView2 / Mac は WKWebView) で開き、閉じるまで待つ"""
     global _settings_mutex
+    if IS_MAC:
+        run_settings_window_mac(port)
+        return
     # 設定画面は 1 枚だけ。もう開いている (開きかけを含む) なら、それを手前に出して終わる
     kernel32 = ctypes.windll.kernel32
     kernel32.CreateMutexW.restype = ctypes.c_void_p
@@ -2431,6 +2524,30 @@ def run_settings_window(port):
         style_settings_window(hwnd)
         bring_to_front(hwnd)   # 別プロセスから開くので、そのままだと他のウィンドウの後ろに出ることがある
         api._shown(hwnd)
+
+    window.events.shown += on_shown
+    webview.start()
+
+
+def run_settings_window_mac(port):
+    import macsys
+    # 設定画面は 1 枚だけ。もう開いているなら、それを手前に出して終わる
+    if not macsys.settings_lock(SETTINGS_LOCK):
+        macsys.activate(macsys.settings_pid(SETTINGS_LOCK))
+        return
+    import webview
+    w, h = saved_window_size()
+    api = SettingsApi()
+    window = webview.create_window(
+        "deej-tab", f"http://127.0.0.1:{port}/", js_api=api,
+        width=w, height=h, min_size=(640, 480), background_color="#0e1014",
+    )
+    api._window = window
+
+    def on_shown():
+        # 本体と同じ .app (Dock に出さない設定) から開くので、開いている間は Dock に出して手前に出す
+        macsys.set_dock_icon(True)
+        macsys.activate()
 
     window.events.shown += on_shown
     webview.start()
@@ -2647,16 +2764,29 @@ def run_tray(app, port):
                              checked=lambda item: not app.config.enabled),
             pystray.MenuItem(text("プロファイル"), pystray.Menu(profile_items),
                              visible=lambda item: len(app.config.profiles) > 1),
-            pystray.MenuItem(text("Windows の起動時に自動で起動"), on_autostart,
+            pystray.MenuItem(text("ログイン時に自動で起動" if IS_MAC else "Windows の起動時に自動で起動"), on_autostart,
                              checked=lambda item: autostart_enabled()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(text("終了"), on_quit),
         ),
     )
 
+    def on_main(fn):
+        """Mac はメニューバーをメインスレッドでしか触れないので、そちらに頼む"""
+        if IS_MAC:
+            import macsys
+            macsys.on_main(fn)
+        else:
+            fn()
+
+    def show(icon_image, title):
+        icon.icon = icon_image
+        icon.title = title
+        icon.update_menu()
+
     def watch(icon):
         # デバイスの接続状態をアイコン (つまみの色) とツールチップに出す
-        icon.visible = True
+        on_main(lambda: setattr(icon, "visible", True))
         shown = None
         next_tray_check = time.monotonic() + TRAY_CHECK
         while not app.stop.is_set():
@@ -2667,10 +2797,9 @@ def run_tray(app, port):
             if key != shown:
                 shown = key
                 # 一時停止中は未接続と同じ灰色のつまみ (光らせない)
-                icon.icon = icons[state["connected"] and enabled]
-                icon.title = tray_title(state, enabled, lang()) + (
+                title = tray_title(state, enabled, lang()) + (
                     f" [{app.config.active_profile}]" if len(app.config.profiles) > 1 else "")
-                icon.update_menu()
+                on_main(lambda img=icons[state["connected"] and enabled], t=title: show(img, t))
             if time.monotonic() >= next_tray_check:
                 next_tray_check = time.monotonic() + TRAY_CHECK
                 try:
@@ -2680,6 +2809,9 @@ def run_tray(app, port):
                     log.warning("トレイアイコンを確認できません: %s", e)
             app.stop.wait(1.0)
 
+    if IS_MAC:
+        import macsys
+        macsys.set_dock_icon(False)   # メニューバーにだけ出す (python で動かした時。.app は Info.plist で指定)
     icon.run(setup=watch)
 
 
@@ -2733,13 +2865,18 @@ def main():
         except Exception as e:
             log.warning("自動起動の登録を exe に切り替えられません: %s", e)
 
-    audio_factory = WindowsAudio if sys.platform == "win32" else DummyAudio
     catalog = None
-    if audio_factory is DummyAudio:
-        log.warning("Windows 以外のため音量操作は行いません (タブ音量のみ)")
-    else:
+    if sys.platform == "win32":
+        audio_factory = WindowsAudio
         from appcatalog import AppCatalog
         catalog = AppCatalog()
+    elif IS_MAC:
+        import macsys
+        audio_factory = macsys.MacAudio
+        catalog = macsys.MacCatalog()
+    else:
+        audio_factory = DummyAudio
+        log.warning("Windows・Mac 以外のため音量操作は行いません (タブ音量のみ)")
     app = DeejTab(config, audio_factory, catalog)
 
     try:

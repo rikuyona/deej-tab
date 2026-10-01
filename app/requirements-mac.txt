@@ -1,0 +1,9 @@
+# Mac 版 (build_mac.py) で使うもの。pywebview が pyobjc (Cocoa・WebKit など) も入れる
+pyserial
+websockets
+pyyaml
+psutil
+pystray
+pillow
+pywebview
+pyinstaller
