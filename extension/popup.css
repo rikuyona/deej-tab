@@ -1,0 +1,131 @@
+/* 配色は deej-tab の設定画面 (app/ui.html) と同じ */
+:root {
+  --bg: #0e1014;
+  --panel: #161920;
+  --panel-2: #1c2029;
+  --line: #262b36;
+  --text: #e8eaef;
+  --muted: #8b92a3;
+  --faint: #5c6373;
+  --accent: #ff4d4d;          /* 実機のスライダー LED の赤 */
+  --accent-soft: rgba(255, 77, 77, .14);
+  --ok: #3ecf8e;
+  --warn: #f5b041;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  width: 340px;
+  margin: 0;
+  padding: 0 0 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: default; opacity: .45; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------- ヘッダー ---------- */
+header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 600; font-size: 13.5px; letter-spacing: .02em; }
+.pill {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line);
+  color: var(--muted); font-size: 11.5px; white-space: nowrap;
+}
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.pill.on i { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.pill.off i { background: var(--warn); }
+
+section { padding: 0 14px; }
+h2 { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .08em; margin: 0 0 6px; }
+
+/* ---------- このタブ ---------- */
+.current {
+  display: flex; align-items: center; gap: 8px;
+  padding-top: 10px; padding-bottom: 10px;
+}
+.current-text { min-width: 0; display: flex; flex-direction: column; }
+.current .label { font-size: 11px; color: var(--muted); }
+.current .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note {
+  margin: 0 14px 10px; padding: 6px 10px; border-radius: 8px;
+  background: rgba(245, 176, 65, .1); color: var(--warn); font-size: 12px;
+}
+
+/* ---------- スロット ---------- */
+ul { list-style: none; margin: 0; padding: 0; }
+li {
+  display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 10px;
+  padding: 9px 10px 9px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  transition: border-color .15s;
+}
+li + li { margin-top: 6px; }
+li.mine { border-color: rgba(255, 77, 77, .55); background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); }
+
+.led { width: 8px; height: 8px; border-radius: 50%; background: var(--line); align-self: start; margin-top: 6px; }
+li.assigned .led { background: var(--accent); box-shadow: 0 0 7px var(--accent); }
+li.assigned.muted .led { background: var(--line); box-shadow: none; }
+
+.body { min-width: 0; }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.head b { font-weight: 600; }
+.val { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.meter { height: 4px; margin: 5px 0 6px; border-radius: 2px; background: var(--bg); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--faint); border-radius: 2px; transition: width .08s linear; }
+li.assigned .meter i { background: var(--accent); }
+
+.target {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 0; border: 0; background: none; text-align: left;
+  font-size: 11.5px; color: var(--muted);
+}
+.target span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+li.assigned .target { color: var(--text); }
+button.target:hover span { text-decoration: underline; }
+.fav { flex: none; }
+
+.actions { display: flex; gap: 4px; width: 96px; justify-content: flex-end; }
+.btn {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel-2);
+  font-size: 12px; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.1); border-color: var(--accent); }
+.btn.icon { padding: 4px 8px; color: var(--muted); }
+
+.empty {
+  padding: 14px; border: 1px dashed var(--line); border-radius: 10px;
+  color: var(--muted); font-size: 12px; text-align: center;
+}
+.empty b { display: block; color: var(--text); margin-bottom: 4px; }
+.error { margin: 8px 0 0; color: var(--accent); font-size: 12px; }
+
+/* ---------- 音量の変え方 ---------- */
+.method { margin-top: 14px; }
+.seg { display: flex; padding: 3px; gap: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.seg button {
+  flex: 1; padding: 5px 4px; border: 0; border-radius: 6px;
+  background: none; color: var(--muted); font-size: 12px;
+}
+.seg button:hover { color: var(--text); }
+.seg button[aria-checked="true"] { background: var(--panel-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.hint { margin: 6px 0 0; font-size: 11px; color: var(--faint); }
+
+/* ---------- 100% 超え・一時停止 ---------- */
+li.over .val { color: #ff9f43; }
+li.assigned.over .meter i { background: linear-gradient(90deg, var(--accent), #ff9f43); }
+body.paused li.assigned .led { background: var(--line); box-shadow: none; }
+body.paused .meter i { background: var(--faint) !important; }

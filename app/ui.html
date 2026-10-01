@@ -1,0 +1,1618 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deej-tab</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/icon.png" type="image/png" sizes="256x256">
+<style>
+  :root {
+    --bg: #0e1014;
+    --panel: #161920;
+    --panel-2: #1c2029;
+    --line: #262b36;
+    --text: #e8eaef;
+    --muted: #8b92a3;
+    --faint: #5c6373;
+    --accent: #ff4d4d;          /* 実機のスライダー LED の赤 */
+    --accent-soft: rgba(255, 77, 77, .14);
+    --boost: #ff9f43;           /* 100% を超える範囲 */
+    --ok: #3ecf8e;
+    --warn: #f5b041;
+    --radius: 14px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* display を指定した要素でも hidden で隠れるように */
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  /* ---------- ヘッダー ---------- */
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--bg); z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; letter-spacing: .02em; white-space: nowrap; }
+  .brand img { width: 28px; height: 28px; }
+  .power {
+    display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+    padding: 4px 6px 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+    font-size: 12.5px; color: var(--muted); white-space: nowrap;
+  }
+  .power b { color: var(--text); font-weight: 500; }
+  .paused .power { border-color: rgba(245, 176, 65, .5); }
+  .paused .power b { color: var(--warn); }
+  .pills { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--muted); font-size: 12.5px; white-space: nowrap;
+  }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .pill.on i { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .pill.off i { background: var(--warn); }
+  .pill b { color: var(--text); font-weight: 500; }
+
+  .banner {
+    display: none; margin: 0 0 18px; padding: 10px 14px; border-radius: 10px;
+    background: rgba(245, 176, 65, .08); border: 1px solid rgba(245, 176, 65, .35); color: var(--warn); font-size: 13px;
+  }
+  .paused .banner { display: block; }
+
+  main { padding: 24px 28px 40px; max-width: 1280px; margin: 0 auto; }
+  #view-settings { max-width: 860px; margin: 0 auto; }
+
+  /* ---------- ページの切り替え (ミキサー / 設定) ---------- */
+  .tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .tabs button {
+    border: 0; background: none; color: var(--muted); padding: 5px 14px; border-radius: 7px;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] { background: var(--line); color: var(--text); }
+  .tabs svg { width: 15px; height: 15px; }
+  .tabs .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+  h2 { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; margin: 0 0 12px; }
+
+  /* ---------- チャンネル ---------- */
+  .channels {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));   /* 実機と同じく横一列 */
+    margin-bottom: 32px;
+  }
+  @media (max-width: 1000px) { .channels { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 560px)  { .channels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .ch {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 12px;
+    min-height: 420px; position: relative;
+    transition: border-color .15s;
+  }
+  .ch.moving { border-color: rgba(255, 77, 77, .55); }
+  .ch-head { display: flex; align-items: center; gap: 6px; }
+  .ch-name { font-weight: 600; white-space: nowrap; }
+  .ch-pin { font-size: 11.5px; color: var(--faint); font-family: Consolas, monospace; margin-left: auto; }
+  .gear {
+    border: 0; background: none; color: var(--faint); width: 26px; height: 26px; border-radius: 7px;
+    display: grid; place-items: center; flex: none;
+  }
+  .gear:hover, .ch.moving .gear { background: var(--line); color: var(--text); }
+  .gear svg { width: 16px; height: 16px; }
+
+  .meter {
+    position: relative; height: 170px; border-radius: 10px;
+    background: var(--panel-2); overflow: hidden;
+  }
+  .meter .fill {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(255,77,77,.55), rgba(255,77,77,.18));
+    clip-path: inset(100% 0 0 0);
+    transition: clip-path .08s linear;
+  }
+  .meter .unity {
+    position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(255, 255, 255, .45);
+  }
+  .meter .unity span {
+    position: absolute; right: 6px; bottom: 2px; font-size: 10.5px; color: rgba(255,255,255,.6);
+    font-variant-numeric: tabular-nums;
+  }
+  .meter .knob {
+    position: absolute; left: 50%; width: 44px; height: 6px; margin-left: -22px;
+    border-radius: 3px; background: var(--accent); box-shadow: 0 0 12px rgba(255,77,77,.8);
+    bottom: 0%; transform: translateY(50%); transition: bottom .08s linear;
+  }
+  .meter.over .knob { background: var(--boost); box-shadow: 0 0 12px rgba(255,159,67,.8); }
+  /* 音量がついてくる途中: つまみは「向かう先」として枠だけにし、塗りの上端 (今の音量) に線を出す */
+  .meter.chasing .knob { background: transparent; box-shadow: 0 0 0 2px var(--accent), 0 0 10px rgba(255,77,77,.5); }
+  .meter.chasing.over .knob { box-shadow: 0 0 0 2px var(--boost), 0 0 10px rgba(255,159,67,.5); }
+  .meter .pct {
+    position: absolute; top: 10px; left: 0; right: 0; text-align: center;
+    font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+    z-index: 1; text-shadow: 0 1px 8px rgba(0,0,0,.7);
+  }
+  .meter.over .pct { color: var(--boost); }
+  .meter .pct small { font-size: 13px; color: var(--muted); margin-left: 2px; font-weight: 500; }
+  .meter.idle .fill, .meter.idle .knob { opacity: .25; }
+  .meter.idle .pct { color: var(--faint); }
+  .paused .meter .fill, .paused .meter .knob { filter: grayscale(1); opacity: .35; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: -4px; }
+  .tags:empty { display: none; }
+  .tag {
+    font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--panel-2); white-space: nowrap; cursor: pointer;
+  }
+  .tag.boost { color: var(--boost); border-color: rgba(255,159,67,.35); }
+
+  .targets { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .empty { color: var(--faint); font-size: 12.5px; padding: 6px 2px; }
+  .chip {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px 7px 10px; border-radius: 9px;
+    background: var(--panel-2); border: 1px solid var(--line);
+  }
+  .ico { width: 18px; height: 18px; flex: none; color: var(--muted); }
+  img.ico { object-fit: contain; }
+  .chip .lbl { flex: 1; min-width: 0; }
+  .chip .lbl span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
+  .chip .lbl small { display: block; color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .x {
+    border: 0; background: none; color: var(--faint); width: 22px; height: 22px; border-radius: 6px;
+    display: grid; place-items: center; flex: none;
+  }
+  .chip .x:hover { background: var(--line); color: var(--text); }
+  .chip.tab .ico { color: #6aa8ff; }
+  .chip.app .ico { color: #b58cff; }
+  .chip.special .ico { color: var(--accent); }
+  .chip.obs .ico { color: #9fd3c7; }
+
+  .add {
+    border: 1px dashed var(--line); background: none; border-radius: 9px;
+    padding: 8px; color: var(--muted); font-size: 13px;
+  }
+  .add:hover { border-color: var(--faint); color: var(--text); }
+
+  /* ---------- ポップアップ (割り当ての追加・スライダーの設定) ---------- */
+  .pop {
+    position: fixed; z-index: 20; width: 320px; max-height: 480px;
+    background: #1a1e27; border: 1px solid #323846; border-radius: 12px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .picker input {
+    margin: 10px; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); outline: none;
+  }
+  .picker input:focus { border-color: var(--faint); }
+  .picker input, .picker .foot { flex: none; }
+  .picker .list { overflow-y: auto; padding: 0 6px 8px; flex: 1; min-height: 0; }   /* min-height: 0 がないと縮まずに下が切れる */
+  .picker .grp { font-size: 11.5px; color: var(--faint); padding: 10px 8px 4px; letter-spacing: .06em; }
+  .picker .opt {
+    display: flex; gap: 10px; align-items: center; width: 100%; text-align: left;
+    border: 0; background: none; padding: 6px 8px; border-radius: 8px;
+  }
+  .picker .opt:hover, .picker .opt.active { background: var(--panel-2); }
+  .picker .opt .ico { width: 20px; height: 20px; }
+  .picker .opt div { min-width: 0; flex: 1; }
+  .picker .opt div > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker .opt small { display: block; color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker .opt .use { color: var(--warn); }
+  .picker .opt .live { color: var(--ok); }
+  .picker .none { padding: 14px 10px; color: var(--faint); font-size: 12.5px; }
+  .picker .foot { border-top: 1px solid var(--line); padding: 8px; display: flex; gap: 8px; }
+  .picker .foot button { flex: 1; }
+
+  .sp { padding: 14px 16px 12px; gap: 12px; overflow-y: auto; }
+  .sp h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .sp .row { padding: 0; border: 0; gap: 12px; }
+  .sp .col { display: flex; flex-direction: column; gap: 8px; }
+  .sp .lab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .sp .lab b { font-weight: 500; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sp .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+  .sp .grid.glide { grid-template-columns: 1.9fr repeat(4, 1fr); }
+  .sp .grid.glide button { font-size: 11.5px; }
+  .sp .grid button {
+    border: 1px solid var(--line); background: var(--panel-2); border-radius: 7px; padding: 4px 0; font-size: 12.5px;
+    color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .sp .grid button[aria-checked="true"] { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .sp .grid button.hi { color: var(--boost); }
+  .sp .grid button.hi[aria-checked="true"] { border-color: var(--boost); background: rgba(255,159,67,.12); color: var(--text); }
+  .sp input[type=range] { width: 100%; accent-color: var(--boost); }
+  .sp .note { margin: 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
+  .sp .note.warn { color: var(--warn); }
+  .sp .link { border: 0; background: none; color: var(--muted); padding: 0; font-size: 12px; text-decoration: underline; }
+  .sp .link:hover { color: var(--text); }
+  .sp hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+  /* ---------- 設定 ---------- */
+  .settings {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 4px 18px;
+  }
+  .row {
+    display: flex; align-items: center; gap: 16px; padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .t { flex: 1; min-width: 0; }
+  .row .t small { display: block; color: var(--muted); font-size: 12.5px; }
+  select, .text {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 10px; outline: none; max-width: 340px;
+  }
+  select:focus, .text:focus { border-color: var(--faint); }
+  .port { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; }
+  .btn:hover { border-color: var(--faint); }
+
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; position: absolute; cursor: pointer; }
+  .switch span {
+    position: absolute; inset: 0; border-radius: 12px; background: var(--line); pointer-events: none;
+    transition: background .15s;
+  }
+  .switch span::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #cfd3dc; transition: transform .15s;
+  }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(18px); background: #fff; }
+  .switch input:indeterminate + span { background: rgba(255, 77, 77, .45); }
+  .switch input:indeterminate + span::after { transform: translateX(9px); }
+  .switch input:focus-visible + span { outline: 2px solid var(--faint); outline-offset: 2px; }
+
+  .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+  .seg button { border: 0; background: none; padding: 5px 14px; border-radius: 6px; color: var(--muted); }
+  .seg button[aria-checked="true"] { background: var(--line); color: var(--text); }
+
+  /* ---------- プロファイル ---------- */
+  .profiles { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 18px; }
+  .profiles .lab { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; margin-right: 6px; }
+  .prof {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-size: 13px;
+  }
+  .prof:hover { border-color: var(--faint); color: var(--text); }
+  .prof.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+  .prof small { font-size: 10.5px; color: var(--ok); }
+  .prof .pg { display: grid; place-items: center; width: 18px; height: 18px; margin-right: -6px; border-radius: 50%; color: var(--muted); }
+  .prof .pg:hover { background: var(--line); color: var(--text); }
+  .prof .pg svg { width: 13px; height: 13px; }
+  .prof.add { border-style: dashed; }
+  .pp { padding: 14px 16px 12px; gap: 12px; overflow-y: auto; }
+  .pp h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .pp .line { display: flex; gap: 6px; }
+  .pp .line .text { flex: 1; min-width: 0; }
+  .pp .apps { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pp .apps span { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 8px;
+    border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); }
+  .pp .apps button { border: 0; background: none; color: var(--faint); padding: 0 4px; }
+  .pp .apps button:hover { color: var(--text); }
+  .pp .note { margin: 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
+  .pp .danger { color: var(--accent); }
+  .pp hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
+  .hotkey { width: 170px; text-align: center; cursor: pointer; caret-color: transparent; }
+  .hotkey:focus { border-color: var(--accent); }
+  .err-note { display: block; color: var(--accent); font-size: 12px; }
+
+  /* ---------- LED (実機のスライダーの LED と同じ光り方) ---------- */
+  /* 明るさはアプリの中の分身 (ファームウェアと同じ計算) から来る。色は JS の ledStyle で付ける */
+  .led { width: 9px; height: 9px; border-radius: 50%; background: #2a1212; flex: none; }
+  .led-preview { display: flex; gap: 14px; padding: 4px 6px; }
+  .led-preview i { width: 20px; height: 20px; border-radius: 50%; background: #2a1212; border: 1px solid #3a2a2a; }
+  .lp { display: grid; grid-template-columns: minmax(150px, 1.2fr) 2fr 70px; gap: 6px 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .lp:empty { display: none; }
+  .lp label { font-size: 13px; }
+  .lp label small { display: block; color: var(--muted); font-size: 11.5px; }
+  .lp input[type=range] { width: 100%; accent-color: var(--accent); }
+  .lp output { font-size: 12.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .lp output.changed { color: var(--text); }
+  .lp-more { border-bottom: 1px solid var(--line); }
+  .lp-more summary { padding: 12px 0; cursor: pointer; color: var(--muted); font-size: 13px; }
+  .lp-more .lp { border-bottom: 0; padding-top: 0; }
+  .meter .pickup {
+    position: absolute; left: 0; right: 0; height: 0; border-top: 2px dotted var(--ok); z-index: 1;
+  }
+  .meter .pickup span { position: absolute; left: 6px; bottom: 2px; font-size: 10.5px; color: var(--ok); white-space: nowrap; }
+  .meter .pickup.high span { bottom: auto; top: 3px; }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  /* ---------- スライダーの端の位置を合わせる ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 25; background: rgba(14,16,20,.72);
+    display: grid; place-items: center; padding: 16px;
+  }
+  .dialog {
+    width: min(600px, 100%); max-height: calc(100vh - 32px); overflow-y: auto;
+    background: #1a1e27; border: 1px solid #323846; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.55);
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .dialog h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .dialog .note { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  .dialog .note.warn { color: var(--warn); }
+  .dialog .foot { display: flex; justify-content: flex-end; gap: 8px; }
+  .btn.primary { background: var(--accent-soft); border-color: var(--accent); }
+  .cal-rows { display: flex; flex-direction: column; gap: 10px; }
+  .cal-row { display: grid; grid-template-columns: 84px 1fr 160px; gap: 12px; align-items: center; }
+  .cal-row .nm { font-size: 13px; white-space: nowrap; }
+  .cal-bar { position: relative; height: 16px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+  .cal-bar .saved { position: absolute; top: -1px; bottom: -1px; border: 1px dashed var(--faint); border-radius: 8px; }
+  .cal-bar .got { position: absolute; top: 2px; bottom: 2px; border-radius: 6px; background: var(--accent-soft); border: 1px solid rgba(255,77,77,.6); }
+  .cal-bar .got.ok { background: rgba(62,207,142,.18); border-color: rgba(62,207,142,.7); }
+  .cal-bar .now { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); }
+  .cal-st { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.4; }
+  .cal-st b { display: block; font-weight: 500; color: var(--text); }
+  .cal-st b.ok { color: var(--ok); }
+  .cal-st .link { border: 0; background: none; color: var(--muted); padding: 0; font-size: 12px; text-decoration: underline; }
+  .cal-st .link:hover { color: var(--text); }
+  @media (max-width: 640px) {
+    .cal-row { grid-template-columns: 1fr; gap: 4px; }
+  }
+
+  /* ---------- 通知・切断表示 ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
+    background: #232834; border: 1px solid #323846; border-radius: 10px;
+    padding: 10px 16px; opacity: 0; transition: .2s; pointer-events: none; z-index: 30;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.err { border-color: rgba(255,77,77,.6); }
+  .offline {
+    position: fixed; inset: 0; background: rgba(14,16,20,.86); z-index: 40;
+    display: none; place-items: center; text-align: center;
+  }
+  .offline.show { display: grid; }
+  .offline p { color: var(--muted); margin: 6px 0 0; }
+
+  /* 起動時のウィンドウの大きさを測るとき (fitWindow) だけ使う: 各列を中身の幅にする */
+  .measuring main { max-width: none; }
+  .measuring .chip .lbl span { display: block; -webkit-line-clamp: unset; }   /* 省略せずに何行になるか測る */
+  .measuring .add, .measuring .ch-head { white-space: nowrap; }
+  .measuring .pills { flex-wrap: nowrap; }   /* 右上の接続状態が 2 段にならない幅を測る */
+  .measuring-h .channels { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+  @media (max-width: 640px) {
+    header { padding: 14px 16px; flex-wrap: wrap; }
+    .pills { margin-left: 0; }
+    main { padding: 18px 16px 32px; }
+    .row { flex-wrap: wrap; }
+    .lp { grid-template-columns: 1fr 1fr 56px; gap: 6px 10px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="/icon.png" alt="">
+    deej-tab
+  </div>
+  <nav class="tabs" role="tablist" aria-label="ページ">
+    <button role="tab" data-view="mix" aria-controls="view-mix">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 4v16M12 4v16M18 4v16"/><rect x="3.5" y="12" width="5" height="3" rx="1" fill="currentColor"/><rect x="9.5" y="7" width="5" height="3" rx="1" fill="currentColor"/><rect x="15.5" y="14" width="5" height="3" rx="1" fill="currentColor"/></svg>ミキサー</button>
+    <button role="tab" data-view="settings" aria-controls="view-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定<i class="dot" id="settings-dot" hidden title="確認が必要な設定があります"></i></button>
+  </nav>
+  <label class="power" title="オフにすると、スライダーを動かしても音量は変わりません（タスクトレイのメニューからも切り替えられます）">
+    <span>スライダー操作</span><b id="power-text">有効</b>
+    <span class="switch"><input type="checkbox" id="enabled" aria-label="スライダー操作を有効にする" checked><span></span></span>
+  </label>
+  <div class="pills">
+    <span class="pill" id="pill-serial"><i></i><span>コントローラー</span><b id="serial-text">確認中</b></span>
+    <span class="pill" id="pill-ext"><i></i><span>Chrome 拡張</span><b id="ext-text">確認中</b></span>
+    <span class="pill" id="pill-obs" hidden><i></i><span>OBS</span><b id="obs-text">確認中</b></span>
+  </div>
+</header>
+
+<main>
+  <div class="banner">一時停止中です。スライダーを動かしても音量は変わりません（Chrome のタブは元の音量に戻っています）。</div>
+  <section id="view-mix" role="tabpanel">
+  <div class="profiles" id="profiles"></div>
+  <h2>割り当て</h2>
+  <div class="channels" id="channels"></div>
+  </section>
+
+  <section id="view-settings" role="tabpanel" hidden>
+
+  <h2>コントローラー</h2>
+  <div class="settings">
+    <div class="row">
+      <div class="t">接続先<small>コントローラーをつないだ USB の COM ポート</small></div>
+      <div class="port">
+        <select id="port-select" aria-label="接続先"></select>
+        <input class="text" id="port-custom" placeholder="例: COM5" hidden>
+        <button class="btn" id="port-apply" hidden>適用</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="t">すべてのスライダーの向きを反転<small id="invert-note">上げると音が小さくなるときはオン。1 本ずつ変えるときは各スライダーの ⚙ から</small></div>
+      <label class="switch"><input type="checkbox" id="invert" aria-label="すべてのスライダーの向きを反転"><span></span></label>
+    </div>
+    <div class="row">
+      <div class="t">スライダーの端の位置を合わせる<small id="cal-note">いちばん下・いちばん上まで動かしても 0% / 100% にならないときに。合わせた範囲はコントローラーにも保存され、LED も同じ範囲で動きます</small></div>
+      <button class="btn" id="cal-reset-all" hidden>元に戻す</button>
+      <button class="btn" id="cal-open">合わせる</button>
+    </div>
+    <div class="row">
+      <div class="t">揺れの抑え<small>触っていないのに音量が小刻みに変わるときは強くします。強いほど、ゆっくり動かしたときに音量が飛び飛びに変わります</small></div>
+      <div class="seg" role="radiogroup" aria-label="揺れの抑え" id="noise">
+        <button role="radio" data-v="none">なし</button>
+        <button role="radio" data-v="low">弱</button>
+        <button role="radio" data-v="default">標準</button>
+        <button role="radio" data-v="high">強</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="t">LED で知らせること<small id="led-note">割り当て先がない・100% を超えている・一時停止中などを、スライダーの LED の光り方で知らせます（専用のファームウェア deej-6ch-led が必要）</small></div>
+      <div class="seg" role="radiogroup" aria-label="LED で知らせること" id="led-mode">
+        <button role="radio" data-v="off">なし</button>
+        <button role="radio" data-v="status">状態</button>
+        <button role="radio" data-v="meter">状態と音の大きさ</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="t">Windows の起動時に自動で起動<small>タスクトレイに常駐します</small></div>
+      <label class="switch"><input type="checkbox" id="autostart" aria-label="Windows の起動時に自動で起動"><span></span></label>
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px">LED の光り方</h2>
+  <div class="settings" id="led-look">
+    <div class="row">
+      <div class="t">プレビュー<small id="led-preview-note">コントローラーの LED と同じ光り方です</small></div>
+      <div class="led-preview" id="led-preview" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <button class="btn" id="led-boot">起動アニメを再生</button>
+    </div>
+    <div class="row">
+      <div class="t">操作していないとき<small>明るさや速さは、光り方ごとに覚えます</small></div>
+      <select id="led-IDLE_STYLE" data-k="IDLE_STYLE" aria-label="操作していないときの光り方"></select>
+    </div>
+    <div class="row">
+      <div class="t">起動したとき<small>コントローラーをつないだとき。速さは光り方ごとに覚えます</small></div>
+      <select id="led-BOOT_STYLE" data-k="BOOT_STYLE" aria-label="起動したときの光り方"></select>
+    </div>
+    <div class="row">
+      <div class="t">操作したとき<small>スライダーを動かしたとき。明るさや時間は、光り方ごとに覚えます</small></div>
+      <select id="led-TOUCH_STYLE" data-k="TOUCH_STYLE" aria-label="操作したときの光り方"></select>
+    </div>
+    <div class="lp" id="led-main"></div>
+    <details class="lp-more">
+      <summary>詳しい設定（状態を知らせるときの光り方など）</summary>
+      <div class="lp" id="led-more"></div>
+    </details>
+    <div class="row">
+      <div class="t">初期設定に戻す<small>変えた設定はコントローラーにも保存され、PC から外しても同じ光り方になります</small></div>
+      <button class="btn" id="led-reset">初期設定に戻す</button>
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px">動作</h2>
+  <div class="settings">
+    <div class="row">
+      <div class="t">音量の変わり方<small>スライダーを速く動かしたとき、音量がどのくらいかけて追いつくか。1 本ずつ変えるときは各スライダーの ⚙ から</small></div>
+      <div class="seg" role="radiogroup" aria-label="音量の変わり方" id="glide">
+        <button role="radio" data-v="0">すぐ</button>
+        <button role="radio" data-v="0.3">なめらか</button>
+        <button role="radio" data-v="1">ゆっくり</button>
+        <button role="radio" data-v="3">とてもゆっくり</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="t">一時停止・終了したら音量を元に戻す<small>Windows・OBS の音量を、deej-tab が変える前に戻します（Chrome のタブはいつも元に戻ります）</small></div>
+      <label class="switch"><input type="checkbox" id="restore" aria-label="一時停止・終了したら音量を元に戻す"><span></span></label>
+    </div>
+    <div class="row">
+      <div class="t">プロファイルを切り替えても音量を飛ばさない<small>切り替えたあと、スライダーが今の音量の位置（緑の点線）を通るまで音量を変えません</small></div>
+      <label class="switch"><input type="checkbox" id="pickup" aria-label="プロファイルを切り替えても音量を飛ばさない"><span></span></label>
+    </div>
+    <div class="row sys">
+      <div class="t">一時停止のショートカット<small>どのアプリを使っていても効きます。Backspace で解除</small><span class="err-note" id="hk-pause-err"></span></div>
+      <input class="text hotkey" id="hk-pause" readonly placeholder="クリックしてキーを押す" aria-label="一時停止のショートカット">
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px">OBS 連携</h2>
+  <div class="settings">
+    <div class="row">
+      <div class="t">OBS の音声ソースをスライダーで操作<small>OBS の [ツール] → [WebSocket サーバー設定] で「WebSocket サーバーを有効にする」をオンにしてください。割り当ての追加に「OBS の音声ソース」が出ます</small><span class="err-note" id="obs-err"></span></div>
+      <label class="switch"><input type="checkbox" id="obs-enabled" aria-label="OBS 連携"><span></span></label>
+    </div>
+    <div class="row">
+      <div class="t">ポート・パスワード<small>OBS の WebSocket サーバー設定と同じもの。パスワードは config.yaml にそのまま保存されます</small></div>
+      <div class="port">
+        <input class="text" id="obs-port" inputmode="numeric" style="width:80px" aria-label="ポート">
+        <input class="text" id="obs-password" type="password" autocomplete="off" aria-label="パスワード" style="width:170px">
+        <button class="btn" id="obs-apply">保存して接続</button>
+      </div>
+    </div>
+  </div>
+  </section>
+</main>
+
+<div class="modal" id="cal" hidden role="dialog" aria-modal="true" aria-labelledby="cal-title">
+  <div class="dialog">
+    <h3 id="cal-title">スライダーの端の位置を合わせる</h3>
+    <p class="note">それぞれのスライダーを、いちばん下といちばん上まで動かしてください（ノブは左右いっぱいまで回します）。
+      測っている間は音量は変わりません。動かさなかったスライダーは今のままです。</p>
+    <p class="note warn" id="cal-offline" hidden>コントローラーがつながっていません。</p>
+    <div class="cal-rows" id="cal-rows"></div>
+    <div class="foot">
+      <button class="btn" id="cal-cancel">やめる</button>
+      <button class="btn primary" id="cal-save" disabled>保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="offline" id="offline"><div><b>deej-tab に接続できません</b><p>アプリが終了している可能性があります。再接続を試みています…</p></div></div>
+
+<script>
+const FAKE_PORT = 'socket://127.0.0.1:9000';
+const NAMES = ['スライダー 1', 'スライダー 2', 'スライダー 3', 'スライダー 4', 'スライダー 5', 'ノブ'];
+const MAX_CHOICES = [25, 50, 75, 100, 125, 150, 200, 250, 300, 400];
+const GLIDE_CHOICES = [[null, '全体の設定'], [0, 'すぐ'], [0.3, '0.3 秒'], [1, '1 秒'], [3, '3 秒']];
+const glideLabel = (g) => ({ 0: 'すぐ', 0.3: 'なめらか', 1: 'ゆっくり', 3: 'とてもゆっくり' }[g] ?? `${g} 秒`);
+const SPECIAL = {
+  'master':        ['全体音量', 'Windows のマスター音量'],
+  'system':        ['システム音', '通知音など'],
+  'mic':           ['マイク', 'マイクの入力音量'],
+  'deej.current':  ['今使っているアプリ', 'いちばん手前のウィンドウのアプリ。Chrome なら表示中のタブ'],
+  'deej.unmapped': ['そのほかのアプリ', 'どのスライダーにも割り当てていないアプリ全部'],
+  'deej.game':     ['ゲーム（全画面のアプリ）', '最後に全画面で使ったアプリ。ほかのウィンドウに切り替えても、終了するまで追いかけます'],
+};
+const ICONS = {
+  special: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 8.5a5 5 0 0 1 0 7"/></svg>',
+  auto:    '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg>',
+  tab:     '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5h8.5M8.9 13.8 4.6 6.4M15 13.8l-4.2 7.3"/></svg>',
+  app:     '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 4v16"/></svg>',
+  obs:     '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="7.5" r="2.2"/><circle cx="8" cy="14.5" r="2.2"/><circle cx="16" cy="14.5" r="2.2"/></svg>',
+  gear:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
+};
+
+let state = {
+  enabled: true, mapping: {}, sliders: {}, options: {}, autostart: false, channels: 6,
+  apps: [], appsByExe: {}, ports: [], levels: [], volumes: [], serial: null,
+  pickup: {}, leds: '', applied: [], profiles: [], active_profile: '', hotkeys: {}, obs: {}, obsInputs: [],
+  status: {}, system: true, led_params: {}, led_meta: null, led_levels: [],
+  calibration: {}, cal_meta: null, calib: null,
+};
+let ws = null;
+
+// ---------------------------------------------------------------- 表示用
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const prettyExe = (t) => { const b = t.replace(/\.exe$/, ''); return b.charAt(0).toUpperCase() + b.slice(1); };
+// アプリのアイコン (アプリ本体から取り出したもの)。取れなければ汎用のアイコンに差し替える (下の error)
+const appIcon = (exe) => `<img class="ico appico" alt="" loading="lazy" src="/appicon/${encodeURIComponent(exe)}">`;
+document.addEventListener('error', (e) => {
+  if (e.target instanceof HTMLImageElement && e.target.classList.contains('appico')) e.target.outerHTML = ICONS.app;
+}, true);
+
+function describe(t) {
+  if (SPECIAL[t]) {
+    const kind = t.startsWith('deej.') ? 'auto' : 'special';
+    let sub = SPECIAL[t][1];
+    if (t === 'deej.game') {
+      const g = state.status.game;
+      sub = g ? `今: ${state.appsByExe[g]?.name || g}` : 'まだ全画面のアプリはありません';
+    }
+    return { kind, cls: 'special', icon: ICONS[kind], title: SPECIAL[t][0], sub };
+  }
+  if (t.startsWith('obs:')) {
+    const real = state.obsInputs.find((n) => n.toLowerCase() === t.slice(4)) || t.slice(4);
+    return { kind: 'obs', cls: 'obs', icon: ICONS.obs, title: real, sub: 'OBS の音声ソース' };
+  }
+  const m = t.match(/^tab\.(\d+)$/);
+  if (m) return { kind: 'tab', cls: 'tab', icon: ICONS.tab, title: `Chrome タブ ${m[1]}`, sub: 'Chrome 拡張で選んだタブ' };
+  const a = state.appsByExe[t];
+  return { kind: 'app', cls: 'app', icon: appIcon(t), title: a?.name || prettyExe(t), sub: t, app: a };
+}
+const targetsOf = (i) => state.mapping[String(i)] || [];
+const sliderOf = (i) => state.sliders[String(i)] || { invert: false, max_volume: 100, unity_position: null };
+// 100% になる位置 (0〜100)。上限が 100% 以下なら無し
+function unityOf(s) {
+  if (s.max_volume <= 100) return null;
+  return s.unity_position ?? Math.round(10000 / s.max_volume);
+}
+function ownerOf(t) {
+  for (const [k, v] of Object.entries(state.mapping)) if (v.includes(t)) return Number(k);
+  return -1;
+}
+
+// ---------------------------------------------------------------- チャンネル
+function renderChannels() {
+  const root = document.getElementById('channels');
+  root.innerHTML = '';
+  for (let i = 0; i < state.channels; i++) {
+    const el = document.createElement('section');
+    el.className = 'ch';
+    el.dataset.i = i;
+    const targets = targetsOf(i);
+    el.innerHTML = `
+      <div class="ch-head"><span class="ch-name">${NAMES[i] || 'スライダー ' + (i + 1)}</span><span class="ch-pin">A${i}</span>
+        ${i < 5 ? '<i class="led" title="コントローラーの LED"></i>' : ''}
+        <button class="gear" title="このスライダーの設定（向き・音量の上限など）" aria-label="${NAMES[i]} の設定">${ICONS.gear}</button></div>
+      <div class="meter idle"><div class="fill"></div><div class="knob"></div><div class="pct">—</div></div>
+      <div class="tags"></div>
+      <div class="targets">${targets.length ? '' : '<div class="empty">未割り当て</div>'}</div>
+      <button class="add">＋ 割り当てを追加</button>`;
+    const list = el.querySelector('.targets');
+    for (const t of targets) {
+      const d = describe(t);
+      const chip = document.createElement('div');
+      chip.className = 'chip ' + d.cls;
+      chip.title = d.sub;
+      chip.innerHTML = `${d.icon}<div class="lbl"><span>${esc(d.title)}</span><small>${esc(d.sub)}</small></div>
+        <button class="x" aria-label="${esc(d.title)} を外す">✕</button>`;
+      chip.querySelector('.x').addEventListener('click', () => setTargets(i, targets.filter((x) => x !== t)));
+      list.appendChild(chip);
+    }
+    el.querySelector('.add').addEventListener('click', (e) => openPicker(i, e.currentTarget));
+    el.querySelector('.gear').addEventListener('click', (e) => openSliderPanel(i, e.currentTarget));
+    el.querySelector('.tags').addEventListener('click', () => openSliderPanel(i, el.querySelector('.gear')));
+    renderSliderLook(el, sliderOf(i));
+    root.appendChild(el);
+  }
+  renderLevels();
+}
+
+// スライダーごとの設定をカードに出す: 100% の線・色分け・設定のタグ
+function renderSliderLook(el, s) {
+  const meter = el.querySelector('.meter');
+  meter.querySelector('.unity')?.remove();
+  const u = unityOf(s);
+  const fill = meter.querySelector('.fill');
+  if (u !== null) {
+    fill.style.background = `linear-gradient(to top, rgba(255,77,77,.55) 0%, rgba(255,77,77,.3) ${u}%, rgba(255,159,67,.5) ${u}%, rgba(255,159,67,.22) 100%)`;
+    meter.insertAdjacentHTML('beforeend', `<div class="unity" style="bottom:${u}%"><span>100%</span></div>`);
+  } else {
+    fill.style.background = '';
+  }
+  const tags = [];
+  if (s.invert) tags.push('<span class="tag">反転</span>');
+  if (s.max_volume !== 100) tags.push(`<span class="tag${s.max_volume > 100 ? ' boost' : ''}">最大 ${s.max_volume}%</span>`);
+  if (u !== null && s.unity_position !== null) tags.push(`<span class="tag">100% の位置 ${u}%</span>`);
+  if (s.glide !== null && s.glide !== undefined) tags.push(`<span class="tag">変わり方 ${glideLabel(s.glide)}</span>`);
+  el.querySelector('.tags').innerHTML = tags.join('');
+}
+
+// 音量 → スライダーの位置 (0〜1)。上限と「100% の位置」も反映 (deej_tab.py の slider_position と同じ)
+function posOf(i, v) {
+  const s = sliderOf(i);
+  const mv = s.max_volume / 100;
+  const cl = (x) => Math.max(0, Math.min(1, x));
+  if (mv <= 1) return cl(v / mv);
+  const u = (unityOf(s) ?? 100) / 100;
+  if (v <= 1) return cl(v * u);
+  return cl(u + (v - 1) / (mv - 1) * (1 - u));
+}
+
+function renderLevels() {
+  const connected = state.serial?.connected;
+  document.querySelectorAll('.ch').forEach((el) => {
+    const i = Number(el.dataset.i);
+    const p = state.levels[i];
+    const v = state.applied[i] ?? state.volumes[i] ?? p;
+    const meter = el.querySelector('.meter');
+    const has = connected && p !== undefined;
+    meter.classList.toggle('idle', !has);
+    const pos = has ? Math.round(p * 100) : 0;
+    const vol = has ? Math.round(v * 100) : 0;
+    meter.classList.toggle('over', has && vol > 100);
+    // 塗り = 実際にかかっている音量、つまみ = スライダーの位置 (目標)。
+    // 音量がゆっくりついてくる間は、塗りがつまみを後から追いかける
+    const fillPos = has ? posOf(i, v) * 100 : 0;
+    meter.classList.toggle('chasing', has && Math.abs(fillPos - p * 100) > 1.5);
+    meter.querySelector('.fill').style.clipPath = `inset(${100 - fillPos}% 0 0 0)`;
+    meter.querySelector('.knob').style.bottom = pos + '%';
+    meter.querySelector('.pct').innerHTML = has ? `${vol}<small>%</small>` : '—';
+    // ピックアップ待ち: スライダーをここまで動かすと効き始める
+    const pk = state.pickup[String(i)];
+    let mark = meter.querySelector('.pickup');
+    if (pk !== undefined && has) {
+      if (!mark) {
+        meter.insertAdjacentHTML('beforeend', '<div class="pickup"><span>ここまで動かすと効きます</span></div>');
+        mark = meter.querySelector('.pickup');
+      }
+      // 上端・下端でも見えるように、線はメーターの内側に収め、上の方では文字を線の下に出す
+      mark.style.bottom = `calc(${Math.min(99, pk * 100)}% - ${pk > 0.98 ? 1 : 0}px)`;
+      mark.classList.toggle('high', pk > 0.8);
+    } else if (mark) {
+      mark.remove();
+    }
+    const led = el.querySelector('.led');
+    if (led) ledStyle(led, state.led_levels[i] ?? 0, 6);
+  });
+  renderLedPreview();
+}
+
+// ---------------------------------------------------------------- ポップアップ (共通)
+let pop = null;   // { el, kind: 'picker' | 'slider', index, refresh }
+function closePop() {
+  if (pop) { pop.el.remove(); pop = null; }
+  document.querySelectorAll('.ch.moving').forEach((c) => c.classList.remove('moving'));
+}
+function placePop(el, anchor, w = 320) {
+  const r = anchor.getBoundingClientRect();
+  const left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+  // 下に十分な空きがあれば下、なければ広いほうに出し、出した側の空きに収まる高さにする (画面の外に切れないように)
+  const below = window.innerHeight - r.bottom - 14;
+  const above = r.top - 14;
+  const down = below >= 320 || below >= above;
+  el.style.left = left + 'px';
+  if (down) el.style.top = (r.bottom + 6) + 'px';
+  else el.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+  el.style.maxHeight = Math.max(160, Math.min(520, down ? below : above)) + 'px';
+}
+function openPop(kind, i, anchor, className) {
+  closePop();
+  anchor.closest('.ch').classList.add('moving');
+  const el = document.createElement('div');
+  el.className = 'pop ' + className;
+  document.body.appendChild(el);
+  pop = { el, kind, index: i, refresh: () => {} };
+  return el;
+}
+document.addEventListener('mousedown', (e) => {
+  if (pop && !pop.el.contains(e.target) && !e.target.closest('.add, .gear, .tags')) closePop();
+});
+window.addEventListener('resize', closePop);
+window.addEventListener('scroll', closePop);   // ページが動くと位置がずれるので閉じる (一覧の中のスクロールでは閉じない)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
+
+// ---------------------------------------------------------------- 割り当ての追加
+function pickerGroups(i) {
+  const mine = new Set(targetsOf(i));
+  const apps = state.apps.filter((a) => !mine.has(a.exe));
+  const groups = [
+    ['基本', ['master', 'system', 'mic']],
+    ['自動で切り替わる', ['deej.current', 'deej.game', 'deej.unmapped']],
+    ['Chrome タブ', [1, 2, 3, 4, 5, 6].map((n) => 'tab.' + n)],
+    ['音を出しているアプリ', apps.filter((a) => a.audio).map((a) => a.exe)],
+    ['起動中のアプリ', apps.filter((a) => !a.audio && a.window).map((a) => a.exe)],
+    ['最近使ったアプリ', apps.filter((a) => !a.audio && !a.window && a.recent).map((a) => a.exe)],
+    ['インストール済みのアプリ', apps.filter((a) => !a.audio && !a.window && !a.recent && a.installed).map((a) => a.exe)],
+    ['OBS の音声ソース', state.obsInputs.map((n) => 'obs:' + n.toLowerCase())],
+  ];
+  return groups.map(([name, items]) => [name, items.filter((t) => !mine.has(t))]);
+}
+
+function openPicker(i, anchor) {
+  const el = openPop('picker', i, anchor, 'picker');
+  el.innerHTML = `<input placeholder="検索 (例: discord、spotify)" aria-label="割り当て先を検索"><div class="list" role="listbox"></div>`;
+  if (window.pywebview) {
+    el.insertAdjacentHTML('beforeend', `<div class="foot"><button class="btn" id="pick-exe">一覧にないアプリを exe ファイルから選ぶ…</button></div>`);
+    el.querySelector('#pick-exe').addEventListener('click', () => pickExe(i));
+  }
+  placePop(el, anchor);
+
+  const input = el.querySelector('input');
+  const list = el.querySelector('.list');
+  let active = 0;
+  const choose = (t) => { closePop(); setTargets(i, [...targetsOf(i), t]); };
+  const opts = () => [...list.querySelectorAll('.opt')];
+  const setActive = (n) => {
+    const o = opts();
+    if (!o.length) return;
+    active = (n + o.length) % o.length;
+    o.forEach((b, k) => b.classList.toggle('active', k === active));
+    o[active].scrollIntoView({ block: 'nearest' });
+  };
+
+  const render = () => {
+    const q = input.value.trim().toLowerCase();
+    list.innerHTML = '';
+    let appHits = 0;
+    for (const [name, items] of pickerGroups(i)) {
+      const hits = items.filter((t) => {
+        if (!q) return true;
+        const d = describe(t);
+        return t.includes(q) || d.title.toLowerCase().includes(q);
+      });
+      if (!hits.length) continue;
+      appHits += hits.filter((t) => t.endsWith('.exe')).length;
+      list.insertAdjacentHTML('beforeend', `<div class="grp">${name}</div>`);
+      for (const t of hits) {
+        const d = describe(t);
+        const owner = ownerOf(t);
+        let sub = esc(d.sub);
+        if (owner >= 0) sub = `<span class="use">${esc(NAMES[owner])} から移動</span>`;
+        else if (d.app?.audio) sub = `<span class="live">♪ 再生中</span> · ${esc(t)}`;
+        const b = document.createElement('button');
+        b.className = 'opt';
+        b.setAttribute('role', 'option');
+        b.innerHTML = `${d.icon}<div><span>${esc(d.title)}</span><small>${sub}</small></div>`;
+        b.addEventListener('click', () => choose(t));
+        list.appendChild(b);
+      }
+    }
+    // 手入力 (一覧にないアプリも割り当てられるように)。一覧で見つかった時は、.exe まで打った時だけ出す
+    if (q && /^[\w .\-()+&']+$/.test(q) && (!appHits || q.endsWith('.exe'))) {
+      const name = q.endsWith('.exe') ? q : q + '.exe';
+      if (!targetsOf(i).includes(name) && !state.appsByExe[name]) {
+        list.insertAdjacentHTML('beforeend', `<div class="grp">アプリ名で追加</div>`);
+        const b = document.createElement('button');
+        b.className = 'opt';
+        b.innerHTML = `${ICONS.app}<div><span>${esc(name)}</span><small>今は起動していなくても割り当てられます</small></div>`;
+        b.addEventListener('click', () => choose(name));
+        list.appendChild(b);
+      }
+    }
+    if (!opts().length) list.innerHTML = '<div class="none">候補がありません</div>';
+    setActive(0);
+  };
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    if (e.key === 'Enter') opts()[active]?.click();
+  });
+  pop.refresh = render;   // 一覧が届き直したら描き直す (入力中の文字はそのまま)
+  render();
+  input.focus();
+  send({ type: 'refresh_lists' });
+}
+
+async function pickExe(i) {
+  closePop();
+  let path = null;
+  try { path = await window.pywebview.api.pick_exe(); } catch (e) { toast(String(e), true); }
+  if (!path) return;
+  const exe = path.split(/[\\/]/).pop().toLowerCase();
+  send({ type: 'remember_app', path });
+  setTargets(i, [...targetsOf(i).filter((x) => x !== exe), exe]);
+}
+
+// ---------------------------------------------------------------- スライダーの設定
+function openSliderPanel(i, anchor) {
+  if (pop?.kind === 'slider' && pop.index === i) { closePop(); return; }
+  const el = openPop('slider', i, anchor, 'sp');
+  placePop(el, anchor, 320);
+  const card = anchor.closest('.ch');
+
+  const render = () => {
+    const s = sliderOf(i);
+    const u = unityOf(s);
+    const nonTab = targetsOf(i).some((t) => !/^tab\.\d+$/.test(t) && t !== 'deej.current');
+    const globalInv = !!state.options.invert_sliders;
+    el.innerHTML = `
+      <h3>${esc(NAMES[i])} の設定</h3>
+      <label class="row"><div class="t">向きを反転<small>${globalInv
+        ? '「すべてのスライダーの向きを反転」がオンです。ここをオフにすると、このスライダーだけ元の向きになります'
+        : '上げると音が小さくなるときはオン'}</small></div>
+        <span class="switch"><input type="checkbox" id="sp-inv" ${s.invert ? 'checked' : ''}><span></span></span></label>
+      <hr>
+      <div class="col">
+        <div class="lab"><span>音量の変わり方</span><b>${s.glide === null || s.glide === undefined
+          ? `全体の設定（${glideLabel(Number(state.options.glide || 0))}）` : glideLabel(s.glide)}</b></div>
+        <div class="grid glide" role="radiogroup" aria-label="音量の変わり方">${GLIDE_CHOICES.map(([g, label]) =>
+          `<button role="radio" data-g="${g}" aria-checked="${(s.glide ?? null) === g}">${label}</button>`).join('')}</div>
+      </div>
+      <hr>
+      <div class="col">
+        <div class="lab"><span>いちばん上まで上げたときの音量</span><b>${s.max_volume}%</b></div>
+        <div class="grid" role="radiogroup" aria-label="音量の上限">${MAX_CHOICES.map((m) =>
+          `<button role="radio" data-m="${m}" class="${m > 100 ? 'hi' : ''}" aria-checked="${m === s.max_volume}">${m}%</button>`).join('')}</div>
+        ${s.max_volume > 100 && nonTab
+          ? '<p class="note warn">100% を超える分は、Chrome のタブ（「タブの音をまとめて調整」の方式）と OBS にだけ効きます。アプリ・全体音量・マイクは 100% で止まります。</p>'
+          : ''}
+      </div>
+      ${u !== null ? `
+      <hr>
+      <div class="col">
+        <div class="lab"><span>100% になる位置</span><b id="sp-uval">スライダーの ${u}%${s.unity_position === null ? '（自動）' : ''}</b></div>
+        <input type="range" id="sp-unity" min="5" max="95" step="1" value="${u}" aria-label="100% になる位置">
+        <p class="note">そこより下は 0〜100%、上は 100〜${s.max_volume}%。100% の前後は吸い付くので、ちょうど 100% に合わせやすくなっています。
+          ${s.unity_position !== null ? '<button class="link" id="sp-auto">自動に戻す</button>' : ''}</p>
+      </div>` : ''}`;
+    el.querySelector('#sp-inv').addEventListener('change', (e) => setSlider(i, { invert: e.target.checked }));
+    el.querySelectorAll('.grid button[data-m]').forEach((b) => b.addEventListener('click', () => {
+      setSlider(i, { max_volume: Number(b.dataset.m) });
+    }));
+    el.querySelectorAll('.grid button[data-g]').forEach((b) => b.addEventListener('click', () => {
+      setSlider(i, { glide: b.dataset.g === 'null' ? null : Number(b.dataset.g) });
+    }));
+    const range = el.querySelector('#sp-unity');
+    if (range) {
+      // 動かしている間はカードの線だけ動かし、離したら保存する
+      range.addEventListener('input', () => {
+        el.querySelector('#sp-uval').textContent = `スライダーの ${range.value}%`;
+        renderSliderLook(card, { ...s, unity_position: Number(range.value) });
+      });
+      range.addEventListener('change', () => setSlider(i, { unity_position: Number(range.value) }));
+    }
+    el.querySelector('#sp-auto')?.addEventListener('click', () => setSlider(i, { unity_position: null }));
+  };
+  pop.refresh = render;
+  render();
+}
+
+// ---------------------------------------------------------------- 設定
+function renderSettings() {
+  const o = state.options;
+  const inv = document.getElementById('invert');
+  const n = Array.from({ length: state.channels }, (_, i) => sliderOf(i).invert).filter(Boolean).length;
+  inv.checked = n === state.channels;
+  inv.indeterminate = n > 0 && n < state.channels;   // 一部だけ反転している
+  document.getElementById('invert-note').textContent = inv.indeterminate
+    ? `${n} 本だけ反転しています。切り替えると全部そろいます`
+    : '上げると音が小さくなるときはオン。1 本ずつ変えるときは各スライダーの ⚙ から';
+  document.getElementById('autostart').checked = !!state.autostart;
+  document.getElementById('enabled').checked = state.enabled;
+  document.getElementById('power-text').textContent = state.enabled ? '有効' : '一時停止中';
+  document.body.classList.toggle('paused', !state.enabled);
+  document.querySelectorAll('#noise button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === o.noise_reduction)));
+  document.querySelectorAll('#led-mode button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === o.led_mode)));
+  document.querySelectorAll('#glide button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.v) === Number(o.glide || 0))));
+  document.getElementById('restore').checked = !!o.restore_on_pause;
+  document.getElementById('pickup').checked = !!o.pickup;
+  setHotkeyBox(document.getElementById('hk-pause'), state.hotkeys.pause);
+  document.querySelectorAll('.sys').forEach((e) => { e.hidden = !state.system; });
+  document.getElementById('obs-enabled').checked = !!state.obs.enabled;
+  const port = document.getElementById('obs-port');
+  if (document.activeElement !== port) port.value = state.obs.port || 4455;
+  document.getElementById('obs-password').placeholder = state.obs.has_password ? '設定済み（変えるときだけ入力）' : 'なし';
+  renderPorts();
+  renderProfiles();
+  renderLedLook();
+}
+
+function renderPorts() {
+  const sel = document.getElementById('port-select');
+  if (document.activeElement === sel) return;
+  const current = state.options.com_port || '';
+  const opts = state.ports.map((p) => [p.device, `${p.device} — ${p.description}`]);
+  opts.push([FAKE_PORT, '仮スライダー（テスト用）']);
+  if (current && !opts.some(([v]) => v === current)) opts.push([current, `${current}（見つかりません）`]);
+  opts.push(['__custom__', '手入力…']);
+  sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+  sel.value = current;
+}
+
+document.getElementById('port-select').addEventListener('change', (e) => {
+  const custom = e.target.value === '__custom__';
+  document.getElementById('port-custom').hidden = !custom;
+  document.getElementById('port-apply').hidden = !custom;
+  if (custom) document.getElementById('port-custom').focus();
+  else setOption('com_port', e.target.value);
+});
+document.getElementById('port-apply').addEventListener('click', () => {
+  const v = document.getElementById('port-custom').value.trim();
+  if (!v) return;
+  document.getElementById('port-custom').hidden = true;
+  document.getElementById('port-apply').hidden = true;
+  setOption('com_port', v);
+});
+document.getElementById('invert').addEventListener('change', (e) => setOption('invert_sliders', e.target.checked));
+document.querySelectorAll('#noise button').forEach((b) => b.addEventListener('click', () => setOption('noise_reduction', b.dataset.v)));
+document.getElementById('autostart').addEventListener('change', (e) => send({ type: 'set_autostart', value: e.target.checked }));
+document.getElementById('enabled').addEventListener('change', (e) => send({ type: 'set_enabled', value: e.target.checked }));
+document.querySelectorAll('#led-mode button').forEach((b) => b.addEventListener('click', () => setOption('led_mode', b.dataset.v)));
+document.getElementById('restore').addEventListener('change', (e) => setOption('restore_on_pause', e.target.checked));
+document.querySelectorAll('#glide button').forEach((b) => b.addEventListener('click', () => setOption('glide', Number(b.dataset.v))));
+document.getElementById('pickup').addEventListener('change', (e) => setOption('pickup', e.target.checked));
+document.getElementById('obs-enabled').addEventListener('change', (e) => send({ type: 'set_obs', enabled: e.target.checked }));
+document.getElementById('obs-apply').addEventListener('click', () => {
+  const msg = { type: 'set_obs', enabled: true, port: Number(document.getElementById('obs-port').value) || 4455 };
+  const pw = document.getElementById('obs-password');
+  if (pw.value) msg.password = pw.value;
+  pw.value = '';
+  send(msg);
+});
+
+// ---------------------------------------------------------------- スライダーの端の位置を合わせる
+// 測るのはアプリ側 (calib_start 〜 calib_save)。測っている間の範囲は levels の calib で届く
+// 判定は deej_tab.py の save_calibration と同じ (leds.valid_calibration・CAL_MARGIN)
+const calOpen = () => !document.getElementById('cal').hidden;
+let quietSave = false;   // 端の位置を保存した直後の「保存しました」は出さない (保存したスライダーを別に出すので)
+
+function calJudge(mn, mx) {
+  const m = state.cal_meta;
+  if (!m || mn === undefined) return { ok: false, text: '動かしてください' };
+  const lo = mn <= m.margin ? 0 : mn + m.margin;
+  const hi = mx >= 1023 - m.margin ? 1023 : mx - m.margin;
+  if (mx - mn >= m.min_span && lo <= m.lo_max && hi >= m.hi_min && hi - lo >= m.min_span) return { ok: true, lo, hi };
+  if (mx - mn < m.min_span / 3) return { ok: false, text: '動かしてください' };
+  if (lo > m.lo_max) return { ok: false, text: 'もっと下まで' };
+  if (hi < m.hi_min) return { ok: false, text: 'もっと上まで' };
+  return { ok: false, text: 'もっと大きく動かしてください' };
+}
+
+function renderCalibration() {
+  const n = Object.keys(state.calibration).length;
+  document.getElementById('cal-reset-all').hidden = n === 0;
+  document.getElementById('cal-note').textContent = n
+    ? `${n} 本合わせています。合わせた範囲はコントローラーにも保存され、LED も同じ範囲で動きます`
+    : 'いちばん下・いちばん上まで動かしても 0% / 100% にならないときに。合わせた範囲はコントローラーにも保存され、LED も同じ範囲で動きます';
+  if (!calOpen()) return;
+  const rows = document.getElementById('cal-rows');
+  if (rows.children.length !== state.channels) {
+    rows.innerHTML = Array.from({ length: state.channels }, (_, i) => `
+      <div class="cal-row" data-i="${i}"><span class="nm">${esc(NAMES[i] || 'スライダー ' + (i + 1))}</span>
+        <div class="cal-bar"><div class="saved"></div><div class="got"></div><div class="now"></div></div>
+        <div class="cal-st"></div></div>`).join('');
+  }
+  const c = state.calib || { raw: [], min: [], max: [] };
+  const connected = !!state.serial?.connected;
+  document.getElementById('cal-offline').hidden = connected;
+  const pct = (v) => (v / 1023 * 100).toFixed(2) + '%';
+  let any = false;
+  rows.querySelectorAll('.cal-row').forEach((row) => {
+    const i = Number(row.dataset.i);
+    const saved = state.calibration[String(i)];
+    const [slo, shi] = saved || [0, 1023];
+    const sv = row.querySelector('.saved');
+    sv.hidden = !saved;
+    sv.style.left = pct(slo);
+    sv.style.width = pct(shi - slo);
+    const mn = c.min[i], mx = c.max[i], raw = c.raw[i];
+    const has = connected && mn !== undefined;
+    const got = row.querySelector('.got');
+    got.hidden = !has;
+    const j = calJudge(mn, mx);
+    if (has) {
+      got.style.left = pct(mn);
+      got.style.width = pct(mx - mn);
+      got.classList.toggle('ok', j.ok);
+    }
+    const now = row.querySelector('.now');
+    now.hidden = !has;
+    if (has) now.style.left = pct(raw);
+    any = any || (has && j.ok);
+    const st = row.querySelector('.cal-st');
+    const html = has && j.ok
+      ? `<b class="ok">測れました</b>${j.lo} 〜 ${j.hi}`
+      : `<b>${has ? j.text : '—'}</b>${saved
+        ? `今: ${slo} 〜 ${shi} <button class="link" data-reset="${i}">元に戻す</button>`
+        : '今: 合わせていません'}`;
+    if (st.innerHTML !== html) st.innerHTML = html;
+  });
+  document.getElementById('cal-save').disabled = !any;
+}
+
+function openCalibration() {
+  closePop();
+  state.calib = null;
+  document.getElementById('cal').hidden = false;
+  send({ type: 'calib_start' });
+  renderCalibration();
+  document.getElementById('cal-cancel').focus();
+}
+function closeCalibration(cancel = true) {
+  if (!calOpen()) return;
+  document.getElementById('cal').hidden = true;
+  state.calib = null;
+  if (cancel) send({ type: 'calib_cancel' });
+}
+document.getElementById('cal-open').addEventListener('click', openCalibration);
+document.getElementById('cal-cancel').addEventListener('click', () => closeCalibration());
+document.getElementById('cal-save').addEventListener('click', () => {
+  send({ type: 'calib_save' });
+  closeCalibration(false);
+});
+document.getElementById('cal-rows').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-reset]');
+  if (b) send({ type: 'calib_reset', index: Number(b.dataset.reset) });
+});
+document.getElementById('cal-reset-all').addEventListener('click', () => {
+  if (confirm('すべてのスライダーの端の位置を、合わせる前に戻しますか？')) send({ type: 'calib_reset', index: null });
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCalibration(); });
+
+// ---------------------------------------------------------------- LED の光り方
+// [名前, 表示名, 説明]。範囲・初期設定・光り方の名前はアプリから来る (state.led_meta = leds.py と同じ)
+// 表示名・説明は、関数なら今の数値 p を見て、選んでいる光り方に合わせた言葉にする
+const IDLE_NAMES = { 1: '呼吸', 2: '波', 3: 'きらめき', 4: '鼓動', 5: '光の点' };   // leds.IDLE_STYLES の番号
+const LED_MAIN = [
+  ['DIM', '操作していないときの明るさ',
+    (p) => (p.IDLE_STYLE === 6 ? 'スライダーを上げるほど明るくなり、いちばん上でこの明るさと下の数値の合計になります' : '')],
+  ['IDLE_DEPTH',
+    (p) => (p.IDLE_STYLE === 6 ? 'いちばん上にしたときに足す明るさ' : `${IDLE_NAMES[p.IDLE_STYLE] || 'アニメ'}の明るさ`),
+    (p) => (p.IDLE_STYLE === 6 ? '' : 'いちばん明るいときに、操作していないときの明るさに足す分')],
+  ['IDLE_MS',
+    (p) => ({ 1: '呼吸の速さ', 2: '波の速さ', 3: 'きらめきが切り替わる速さ', 4: '鼓動の速さ', 5: '光の点が往復する速さ' }[p.IDLE_STYLE] || 'アニメの速さ'),
+    '1 回の長さ。短いほど速く動きます'],
+  ['TWINKLE_CHANCE', 'きらめく割合', '大きいほど、たくさんの LED が同時にきらめきます'],
+  ['BRIGHT', (p) => (p.TOUCH_STYLE === 2 ? 'いちばん上にしたときの明るさ' : '操作したときの明るさ'),
+    (p) => (p.TOUCH_STYLE === 1 ? '動かした LED の明るさ。まわりはここから少しずつ暗くなります' : '')],
+  ['TOUCH_MS', '手を離してから明るいままの時間', ''],
+  ['RIPPLE_SPREAD', '波紋の広がり', '隣に行くごとに残る明るさ。大きいほど遠くまで明るくなります'],
+  ['SWEEP_MS', (p) => (p.BOOT_STYLE === 2 ? '起動アニメの長さ' : '起動アニメの速さ'),
+    (p) => (p.BOOT_STYLE === 2 ? '短いほど早く終わります' : '1 こまの長さ。短いほど速く流れます')],
+];
+const LED_MORE = [
+  ['FADE_UP', '明るくなる速さ', '大きいほど、ぱっと明るくなります'],
+  ['FADE_DOWN', '暗くなる速さ', '小さいほど、ゆっくり暗くなります'],
+  ['INACTIVE', '割り当て先がないときの明るさ', 'アプリが起動していないときなど'],
+  ['INACTIVE_TOUCH', '割り当て先がないときに操作した明るさ', ''],
+  ['BREATH_MS', '100% を超えているときの点滅の速さ', '1 回の長さ'],
+  ['BREATH_LOW', '100% を超えているときの点滅の暗い側', ''],
+  ['BLINK_MS', '音量を飛ばさないよう待っているときの点滅の速さ', 'プロファイルを切り替えた直後。点いている・消えている、それぞれの長さ'],
+  ['BLINK_LEVEL', '音量を飛ばさないよう待っているときの明るさ', ''],
+  ['PAUSE_MS', '一時停止中の点滅の速さ', '1 回の長さ'],
+  ['SLEEP_MS', '暗くなるまでの時間', 'どのスライダーも操作しないでいると、この時間で暗くなります'],
+  ['SLEEP', '暗くなったときの明るさ', ''],
+];
+const ledText = (t, p) => (typeof t === 'function' ? t(p) : t);
+const LED_FLOAT = ['FADE_UP', 'FADE_DOWN'];
+
+function ledFmt(k, v) {
+  if (k === 'SLEEP_MS') return v >= 60000 ? `${Math.round(v / 6000) / 10} 分` : `${Math.round(v / 1000)} 秒`;
+  if (k.endsWith('_MS')) return v >= 1000 ? `${(v / 1000).toFixed(1)} 秒` : `${v} ms`;
+  if (LED_FLOAT.includes(k)) return `${Math.round(v * 100)}%`;
+  if (k === 'TWINKLE_CHANCE' || k === 'RIPPLE_SPREAD') return `${v}%`;
+  return String(v);
+}
+function ledStep(k) {
+  if (k === 'SLEEP_MS') return 10000;
+  if (LED_FLOAT.includes(k)) return 0.01;
+  if (k.endsWith('_MS')) return 10;
+  return 1;
+}
+
+// LED の明るさ (PWM 0〜255) を画面の色に。LED は暗い所でも目には明るく見えるので、ガンマ 2.2 の逆で持ち上げる
+function ledStyle(el, lv, glow) {
+  const x = Math.pow(Math.max(0, Math.min(255, lv)) / 255, 1 / 2.2);
+  const mix = (a, b) => Math.round(a + (b - a) * x);
+  el.style.background = `rgb(${mix(0x2a, 0xff)},${mix(0x12, 0x4d)},${mix(0x12, 0x4d)})`;
+  el.style.boxShadow = x > 0.05 ? `0 0 ${Math.round(glow * x)}px rgba(255,77,77,${(x * 0.8).toFixed(2)})` : 'none';
+}
+
+function renderLedPreview() {
+  document.querySelectorAll('#led-preview i').forEach((el, i) => ledStyle(el, state.led_levels[i] ?? 0, 14));
+  const dark = state.options.led_mode !== 'off' && state.leds.includes('D');
+  const note = !state.serial?.connected
+    ? 'コントローラーがつながっていないので、PC とつないでいないときの光り方で見せています'
+    : 'コントローラーの LED と同じ光り方です。スライダーを動かすと、操作したときの光り方も見られます'
+      + (dark ? '（割り当て先のないスライダーは暗いままです）' : '');
+  const el = document.getElementById('led-preview-note');
+  if (el.textContent !== note) el.textContent = note;
+}
+
+// 動かしている途中は保存せずに送る (Nano と分身にだけ反映)。離したら保存
+const ledPending = {};
+let ledTimer = null;
+function sendLedLive(k, v) {
+  ledPending[k] = v;
+  if (ledTimer) return;
+  ledTimer = setTimeout(() => {
+    ledTimer = null;
+    send({ type: 'set_led_params', params: { ...ledPending }, save: false });
+    for (const key of Object.keys(ledPending)) delete ledPending[key];
+  }, 60);
+}
+
+let ledBuilt = false;
+function buildLedLook() {
+  const meta = state.led_meta;
+  if (ledBuilt || !meta) return;
+  ledBuilt = true;
+  for (const [k, names] of [['IDLE_STYLE', meta.idle_styles], ['BOOT_STYLE', meta.boot_styles], ['TOUCH_STYLE', meta.touch_styles]]) {
+    const sel = document.getElementById('led-' + k);
+    sel.innerHTML = names.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join('');
+    sel.addEventListener('change', () => {
+      state.led_params[k] = Number(sel.value);
+      renderLedLook();
+      send({ type: 'set_led_params', params: { [k]: Number(sel.value) } });
+    });
+  }
+  for (const [box, list] of [['led-main', LED_MAIN], ['led-more', LED_MORE]]) {
+    document.getElementById(box).innerHTML = list.map(([k]) => {
+      const [lo, hi] = meta.limits[k];
+      return `<label for="lp-${k}" data-row="${k}"><span id="ln-${k}"></span><small id="ld-${k}"></small></label>
+        <input type="range" id="lp-${k}" data-k="${k}" data-row="${k}" min="${lo}" max="${hi}" step="${ledStep(k)}">
+        <output id="lo-${k}" data-row="${k}"></output>`;
+    }).join('');
+  }
+  document.querySelectorAll('.lp input[type=range]').forEach((r) => {
+    const k = r.dataset.k;
+    const value = () => (LED_FLOAT.includes(k) ? Number(r.value) : Math.round(Number(r.value)));
+    r.addEventListener('input', () => {
+      state.led_params[k] = value();
+      renderLedLook();
+      sendLedLive(k, value());
+    });
+    r.addEventListener('change', () => send({ type: 'set_led_params', params: { [k]: value() } }));
+  });
+  document.getElementById('led-boot').addEventListener('click', () => send({ type: 'led_boot' }));
+  document.getElementById('led-reset').addEventListener('click', () => send({ type: 'reset_led_params' }));
+}
+
+function renderLedLook() {
+  buildLedLook();
+  const meta = state.led_meta;
+  if (!meta) return;
+  const p = state.led_params;
+  for (const k of ['IDLE_STYLE', 'BOOT_STYLE', 'TOUCH_STYLE']) {
+    const sel = document.getElementById('led-' + k);
+    if (document.activeElement !== sel) sel.value = String(p[k]);
+  }
+  for (const [k, label, desc] of [...LED_MAIN, ...LED_MORE]) {
+    document.getElementById('ln-' + k).textContent = ledText(label, p);
+    const d = ledText(desc, p);
+    const small = document.getElementById('ld-' + k);
+    small.textContent = d;
+    small.hidden = !d;
+    const r = document.getElementById('lp-' + k);
+    if (document.activeElement !== r) r.value = String(p[k]);
+    const out = document.getElementById('lo-' + k);
+    out.textContent = ledFmt(k, p[k]);
+    out.classList.toggle('changed', p[k] !== meta.defaults[k]);
+    out.title = p[k] !== meta.defaults[k] ? `初期設定: ${ledFmt(k, meta.defaults[k])}` : '初期設定のまま';
+  }
+  // 選んでいる光り方で使わない数値は隠す
+  const idle = p.IDLE_STYLE;
+  const hide = { IDLE_DEPTH: idle === 0, IDLE_MS: idle === 0 || idle === 6, TWINKLE_CHANCE: idle !== 3, RIPPLE_SPREAD: p.TOUCH_STYLE !== 1 };
+  for (const [k, h] of Object.entries(hide)) {
+    document.querySelectorAll(`[data-row="${k}"]`).forEach((e) => { e.hidden = h; });
+  }
+}
+
+// ---------------------------------------------------------------- ページの切り替え (ミキサー / 設定)
+// どちらを開いているかは URL の # に持つ (再読み込みしても同じページ)
+function showView(view) {
+  if (view !== 'settings') view = 'mix';
+  closePop();
+  document.getElementById('view-mix').hidden = view !== 'mix';
+  document.getElementById('view-settings').hidden = view !== 'settings';
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === view)));
+  const hash = view === 'settings' ? '#settings' : '';
+  if (location.hash !== hash) history.replaceState(null, '', location.pathname + hash);
+  scrollTo(0, 0);
+}
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+showView(location.hash === '#settings' ? 'settings' : 'mix');
+
+// ---------------------------------------------------------------- ショートカットの入力
+// 欄をクリックしてキーを押すと、その組み合わせを登録する。Backspace / Delete で解除、Esc でやめる
+const CODE_KEYS = {
+  Space: 'space', Pause: 'pause', ScrollLock: 'scrolllock', Home: 'home', End: 'end', Insert: 'insert',
+  Delete: 'delete', PageUp: 'pageup', PageDown: 'pagedown', ArrowUp: 'up', ArrowDown: 'down',
+  ArrowLeft: 'left', ArrowRight: 'right', Minus: 'minus', Equal: 'equal', Comma: 'comma', Period: 'period',
+  Slash: 'slash', Semicolon: 'semicolon', Quote: 'quote', BracketLeft: 'bracketleft',
+  BracketRight: 'bracketright', Backslash: 'backslash', Backquote: 'backquote',
+};
+function keyName(code) {
+  let m;
+  if ((m = code.match(/^Key([A-Z])$/))) return m[1].toLowerCase();
+  if ((m = code.match(/^Digit(\d)$/))) return m[1];
+  if ((m = code.match(/^Numpad(\d)$/))) return 'numpad' + m[1];
+  if (/^F\d{1,2}$/.test(code)) return code.toLowerCase();
+  return CODE_KEYS[code] || null;
+}
+const prettyHotkey = (spec) => spec ? spec.split('+').map((k) => k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1)).join(' + ') : '';
+function setHotkeyBox(input, spec) {
+  if (document.activeElement !== input) input.value = prettyHotkey(spec || '');
+}
+function hotkeyInput(input, name) {
+  input.addEventListener('focus', () => { input.value = ''; input.placeholder = 'キーを押してください'; });
+  input.addEventListener('blur', () => {
+    input.placeholder = 'クリックしてキーを押す';
+    const cur = name === 'pause' ? state.hotkeys.pause
+      : (state.profiles.find((p) => 'profile:' + p.name === name) || {}).hotkey;
+    input.value = prettyHotkey(cur || '');
+  });
+  input.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    if (e.key === 'Escape' || e.key === 'Tab') { input.blur(); return; }
+    if (e.code === 'Backspace' || (e.code === 'Delete' && !e.ctrlKey && !e.altKey && !e.shiftKey)) {
+      send({ type: 'set_hotkey', name, value: '' });
+      input.blur();
+      return;
+    }
+    const key = keyName(e.code);
+    if (!key) return;   // 修飾キーだけ押している途中など
+    const spec = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift', e.metaKey && 'win', key].filter(Boolean).join('+');
+    send({ type: 'set_hotkey', name, value: spec });
+    input.blur();
+  });
+}
+hotkeyInput(document.getElementById('hk-pause'), 'pause');
+
+// ---------------------------------------------------------------- プロファイル
+function renderProfiles() {
+  const root = document.getElementById('profiles');
+  const auto = state.status.auto_profile;
+  root.innerHTML = '<span class="lab">プロファイル</span>';
+  for (const p of state.profiles) {
+    const b = document.createElement('button');
+    const on = p.name === state.active_profile;
+    b.className = 'prof' + (on ? ' on' : '');
+    b.title = on ? 'このプロファイルの設定' : 'このプロファイルに切り替える';
+    b.innerHTML = `${esc(p.name)}${on && auto === p.name ? '<small>自動</small>' : ''}${p.hotkey ? `<small style="color:var(--faint)">${esc(prettyHotkey(p.hotkey))}</small>` : ''}`
+      + (on ? `<span class="pg">${ICONS.gear}</span>` : '');
+    b.addEventListener('click', (e) => (on ? openProfilePanel(p.name, e.currentTarget) : send({ type: 'profile_switch', name: p.name })));
+    root.appendChild(b);
+  }
+  const add = document.createElement('button');
+  add.className = 'prof add';
+  add.textContent = '＋ 追加';
+  add.addEventListener('click', (e) => openProfilePanel(null, e.currentTarget));
+  root.appendChild(add);
+}
+
+// name = null なら新しく作る
+function openProfilePanel(name, anchor) {
+  closePop();
+  const el = document.createElement('div');
+  el.className = 'pop pp';
+  document.body.appendChild(el);
+  pop = { el, kind: 'profile', index: -1, refresh: () => {} };
+  placePop(el, anchor, 340);
+  const render = () => {
+    if (name === null) {
+      el.innerHTML = `<h3>プロファイルを追加</h3>
+        <input class="text" id="pp-name" maxlength="24" placeholder="名前 (例: ゲーム、配信)">
+        <label class="line" style="align-items:center;gap:8px"><input type="checkbox" id="pp-copy" checked> 今の割り当て・スライダーの設定をコピーする</label>
+        <button class="btn" id="pp-create">作成</button>
+        <p class="note">作ったら、そのプロファイルに切り替えて割り当てを変えてください。</p>`;
+      const input = el.querySelector('#pp-name');
+      const create = () => {
+        const v = input.value.trim();
+        if (!v) return;
+        send({ type: 'profile_add', name: v, copy: el.querySelector('#pp-copy').checked });
+        closePop();
+      };
+      el.querySelector('#pp-create').addEventListener('click', create);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') create(); });
+      input.focus();
+      return;
+    }
+    const p = state.profiles.find((x) => x.name === name);
+    if (!p) { closePop(); return; }
+    const apps = p.auto_apps.map((a) => `<span>${esc(state.appsByExe[a]?.name || a)}<button data-a="${esc(a)}" aria-label="外す">✕</button></span>`).join('');
+    el.innerHTML = `<h3>プロファイル「${esc(p.name)}」</h3>
+      <div class="line"><input class="text" id="pp-rename" maxlength="24" value="${esc(p.name)}" aria-label="名前"><button class="btn" id="pp-rename-btn">名前を変更</button></div>
+      <hr>
+      <div class="sys">
+        <div style="margin-bottom:6px">このアプリが前に来たら自動で切り替える</div>
+        <div class="apps">${apps || '<span style="padding:2px 8px;color:var(--faint)">なし</span>'}</div>
+        <div class="line" style="margin-top:6px"><input class="text" id="pp-app" list="pp-applist" placeholder="アプリを選ぶ (例: valorant.exe)"><button class="btn" id="pp-app-add">追加</button></div>
+        <datalist id="pp-applist">${state.apps.map((a) => `<option value="${esc(a.exe)}">${esc(a.name)}</option>`).join('')}</datalist>
+        <p class="note">そのアプリを終了すると、元のプロファイルに戻ります。</p>
+      </div>
+      <div class="sys line" style="align-items:center;justify-content:space-between"><span>切り替えのショートカット</span>
+        <input class="text hotkey" id="pp-hotkey" readonly placeholder="クリックしてキーを押す"></div>
+      <span class="err-note" id="pp-hk-err"></span>
+      <hr>
+      <button class="btn danger" id="pp-delete" ${state.profiles.length < 2 || p.name === state.active_profile ? 'disabled title="使用中のプロファイルは消せません"' : ''}>このプロファイルを削除</button>`;
+    el.querySelectorAll('.sys').forEach((e) => { e.hidden = !state.system; });
+    el.querySelector('#pp-rename-btn').addEventListener('click', () => {
+      const v = el.querySelector('#pp-rename').value.trim();
+      if (v && v !== name) { send({ type: 'profile_rename', name, new: v }); name = v; }
+    });
+    el.querySelectorAll('.apps button').forEach((b) => b.addEventListener('click', () => {
+      send({ type: 'profile_update', name, auto_apps: p.auto_apps.filter((a) => a !== b.dataset.a) });
+    }));
+    const addApp = () => {
+      let v = el.querySelector('#pp-app').value.trim().toLowerCase();
+      if (!v) return;
+      if (!v.endsWith('.exe')) v += '.exe';
+      send({ type: 'profile_update', name, auto_apps: [...p.auto_apps, v] });
+    };
+    el.querySelector('#pp-app-add').addEventListener('click', addApp);
+    el.querySelector('#pp-app').addEventListener('keydown', (e) => { if (e.key === 'Enter') addApp(); });
+    const hk = el.querySelector('#pp-hotkey');
+    hk.value = prettyHotkey(p.hotkey);
+    hotkeyInput(hk, 'profile:' + name);
+    el.querySelector('#pp-hk-err').textContent = (state.status.hotkey_errors || {})['profile:' + name] || '';
+    el.querySelector('#pp-delete').addEventListener('click', () => {
+      if (confirm(`プロファイル「${name}」を削除しますか？`)) { send({ type: 'profile_delete', name }); closePop(); }
+    });
+  };
+  pop.refresh = render;
+  render();
+}
+
+function renderStatus() {
+  const s = state.serial;
+  const ps = document.getElementById('pill-serial');
+  ps.className = 'pill ' + (s?.connected ? 'on' : 'off');
+  const portName = s?.port === FAKE_PORT ? '仮スライダー' : (s?.port || '');
+  document.getElementById('serial-text').textContent = s?.connected ? portName + ' 接続中' : portName + ' 未接続';
+  ps.title = s?.error || '';
+  const pe = document.getElementById('pill-ext');
+  pe.className = 'pill ' + (state.extension > 0 ? 'on' : 'off');
+  document.getElementById('ext-text').textContent = state.extension > 0 ? '接続中' : '未接続';
+  const o = state.status.obs || {};
+  const po = document.getElementById('pill-obs');
+  po.hidden = !o.enabled;
+  po.className = 'pill ' + (o.connected ? 'on' : 'off');
+  po.title = o.error || '';
+  document.getElementById('obs-text').textContent = o.connected ? '接続中' : '未接続';
+  document.getElementById('obs-err').textContent = o.enabled && !o.connected ? (o.error || '') : '';
+  document.getElementById('hk-pause-err').textContent = (state.status.hotkey_errors || {}).pause || '';
+  const errs = Object.keys(state.status.hotkey_errors || {}).length;
+  document.getElementById('settings-dot').hidden = !((o.enabled && !o.connected && o.error) || errs);
+}
+
+// ---------------------------------------------------------------- 通信
+function send(msg) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+function setTargets(i, targets) { send({ type: 'set_targets', index: i, targets }); }
+function setOption(key, value) { send({ type: 'set_option', key, value }); }
+function setSlider(i, values) { send({ type: 'set_slider', index: i, ...values }); }
+
+let toastTimer;
+function toast(text, err = false) {
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast' + (err ? ' err' : ''); }, 2400);
+}
+
+// ---------------------------------------------------------------- 起動時のウィンドウの大きさ
+// 中身がはみ出さない (名前が切れない・スクロールが出ない) ぎりぎりの大きさを測って、ウィンドウをその大きさにする。
+// 自前のウィンドウ (pywebview) ならウィンドウに直接、Chrome のアプリウィンドウならアプリ本体に頼む
+// (resizeTo は Chrome が最大化などで無視するため)。普通のタブからは何も起きない。
+// 開いて最初の1回だけ (再読み込みでは変えない)。
+const WIDE_LAYOUT = 1001;   // これより狭いとスライダーが2段になる (CSS の max-width: 1000px)
+const MAX_LAYOUT = 1280;    // main の max-width。これより広くしても中身は広がらない
+const FIT_MARGIN_W = 40;   // 幅の余裕 (px)
+const FIT_MARGIN_H = 16;   // 高さの余裕 (px)
+const PYWEBVIEW_WAIT = 2000; // pywebview の窓口を待つ時間 (ms)。来なければ Chrome のアプリウィンドウとして頼む
+let fitted = false;
+function fitWindow() {
+  if (fitted || !ws || ws.readyState !== WebSocket.OPEN) return;
+  fitted = true;
+  try { if (sessionStorage.getItem('fitted')) return; sessionStorage.setItem('fitted', '1'); } catch {}
+  const body = document.body;
+  const grid = document.getElementById('channels');
+  // ウィンドウの大きさはミキサーのページに合わせる (設定のページを開いていても、測る間だけ切り替える)
+  const views = [document.getElementById('view-mix'), document.getElementById('view-settings')];
+  const hiddenBefore = views.map((v) => v.hidden);
+  views[0].hidden = false;
+  views[1].hidden = true;
+  const main = document.querySelector('main');
+  const cards = [...grid.children];
+  if (!cards.length) { views.forEach((v, k) => { v.hidden = hiddenBefore[k]; }); return; }
+
+  // 幅: 列の幅を少しずつ広げて、どこも切れなくなる最小の幅を探す
+  //   名前は2行まで (3行目からは … で切れる)、「割り当てを追加」と見出しは1行。説明文は元から省略表示なので見ない
+  body.classList.add('measuring');
+  const names = [...grid.querySelectorAll('.chip .lbl span')];
+  const oneLine = [...grid.querySelectorAll('.add, .ch-head')];
+  const lineH = names.length ? parseFloat(getComputedStyle(names[0]).lineHeight) : 0;
+  const fits = () => names.every((e) => e.getBoundingClientRect().height <= lineH * 2 + 1)
+    && oneLine.every((e) => e.scrollWidth <= e.clientWidth);
+  let col = 100;
+  for (; col < 400; col += 2) {
+    grid.style.gridTemplateColumns = `repeat(${cards.length}, ${col}px)`;
+    if (fits()) break;
+  }
+  grid.style.gridTemplateColumns = '';
+  const hs = getComputedStyle(document.querySelector('header'));
+  const ms = getComputedStyle(main);
+  const hdrItems = [...document.querySelector('header').children];
+  const headerNeed = hdrItems.reduce((w, e) => w + e.scrollWidth, 0)
+    + parseFloat(hs.columnGap) * (hdrItems.length - 1) + parseFloat(hs.paddingLeft) + parseFloat(hs.paddingRight);
+  const bodyNeed = col * cards.length + parseFloat(getComputedStyle(grid).columnGap) * (cards.length - 1)
+    + parseFloat(ms.paddingLeft) + parseFloat(ms.paddingRight);
+  body.classList.remove('measuring');
+  // ぎりぎりだと、スクロールバーや拡大表示の丸めで列が狭くなって折り返すので、少し余裕を持たせる
+  const width = Math.min(MAX_LAYOUT, Math.ceil(Math.max(WIDE_LAYOUT, headerNeed, bodyNeed))) + FIT_MARGIN_W;
+
+  // 高さ: その幅で並べたときの下端 (折り返しで変わるので、幅を決めてから測る)
+  body.classList.add('measuring-h');
+  body.style.width = width + 'px';
+  let height = Math.ceil(main.getBoundingClientRect().bottom + scrollY);
+  body.style.width = '';
+  body.classList.remove('measuring-h');
+  views.forEach((v, k) => { v.hidden = hiddenBefore[k]; });
+
+  height += FIT_MARGIN_H;
+  const msg = { width, height, inner_width: innerWidth, inner_height: innerHeight, dpr: devicePixelRatio };
+  // 自前のウィンドウ (pywebview) なら、ウィンドウ自身に頼む。Chrome のアプリウィンドウならアプリ本体に頼む。
+  // pywebview の窓口 (window.pywebview) はページの準備より後に用意されることがあるので、少し待ってから決める
+  let done = false;
+  const viaWindow = () => {
+    if (done || !window.pywebview?.api?.fit) return false;
+    done = true;
+    window.pywebview.api.fit(msg);
+    return true;
+  };
+  if (!viaWindow()) {
+    window.addEventListener('pywebviewready', viaWindow, { once: true });
+    setTimeout(() => {
+      if (viaWindow() || done) return;
+      done = true;
+      send({ type: 'fit_window', ...msg });
+    }, PYWEBVIEW_WAIT);
+  }
+}
+
+let firstConfig = true;
+let gotLists = false;
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ui`);
+  ws.onopen = () => document.getElementById('offline').classList.remove('show');
+  ws.onclose = () => {
+    document.getElementById('offline').classList.add('show');
+    closeCalibration(false);   // アプリ側は画面が切れたら測るのをやめる
+    firstConfig = true;
+    setTimeout(connect, 1500);
+  };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'config') {
+      Object.assign(state, {
+        enabled: m.enabled, mapping: m.mapping, sliders: m.sliders, options: m.options,
+        autostart: m.autostart, channels: m.channels, profiles: m.profiles, active_profile: m.active_profile,
+        hotkeys: m.hotkeys, obs: m.obs, system: m.system,
+        led_params: m.led_params || {}, led_meta: m.led_meta || null,
+        calibration: m.calibration || {}, cal_meta: m.cal_meta || null,
+      });
+      if (pop?.kind === 'profile') pop.refresh();
+      else if (pop?.kind !== 'picker') {
+        renderChannels();
+        if (pop) {   // スライダーの設定を開いたままなら、中身を新しい設定で描き直す
+          document.querySelector(`.ch[data-i="${pop.index}"]`)?.classList.add('moving');
+          pop.refresh();
+        }
+      }
+      renderSettings();
+      renderCalibration();
+      if (!firstConfig && !quietSave) toast('保存しました');
+      quietSave = false;
+      firstConfig = false;
+    } else if (m.type === 'levels') {
+      state.levels = m.values;
+      state.volumes = m.volumes || m.values;
+      state.applied = m.applied || state.volumes;
+      state.pickup = m.pickup || {};
+      state.leds = m.leds || '';
+      state.led_levels = m.led_levels || [];
+      if (m.calib) state.calib = m.calib;
+      renderLevels();
+      renderCalibration();
+    } else if (m.type === 'status') {
+      const before = JSON.stringify([state.status.game, state.status.auto_profile]);
+      state.serial = m.serial;
+      state.extension = m.extension;
+      state.status = m;
+      renderStatus();
+      renderLevels();
+      if (JSON.stringify([m.game, m.auto_profile]) !== before) {
+        renderProfiles();
+        if (!pop) renderChannels();   // 「最後に全画面だったアプリ」の今のアプリ名
+      }
+    } else if (m.type === 'lists') {
+      const hadNames = Object.keys(state.appsByExe).length > 0;
+      state.apps = m.apps;
+      state.appsByExe = Object.fromEntries(m.apps.map((a) => [a.exe, a]));
+      state.ports = m.ports;
+      state.obsInputs = m.obs_inputs || [];
+      renderPorts();
+      if (pop?.kind === 'picker') pop.refresh();
+      else if (!hadNames && !pop) renderChannels();   // 初回: アプリの表示名・アイコンを出す
+      if (!gotLists) { gotLists = true; requestAnimationFrame(fitWindow); }
+    } else if (m.type === 'calib_result') {
+      const names = (list) => list.map((i) => NAMES[i] || `スライダー ${i + 1}`).join('、');
+      if (m.saved.length) {
+        quietSave = true;
+        toast(`${names(m.saved)} の端の位置を保存しました`);
+      } else {
+        toast('端まで動かしたスライダーがないので、保存しませんでした', true);
+      }
+    } else if (m.type === 'error') {
+      toast(m.message, true);
+    }
+  };
+}
+renderChannels();
+connect();
+</script>
+</body>
+</html>

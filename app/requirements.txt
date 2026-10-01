@@ -1,0 +1,9 @@
+pyserial
+websockets
+pyyaml
+pycaw
+comtypes
+psutil
+pystray
+pillow
+pywebview

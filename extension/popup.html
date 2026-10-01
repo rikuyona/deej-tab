@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>deej タブ音量</title>
+<link rel="stylesheet" href="popup.css">
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="" width="20" height="20">
+    <span class="brand">deej タブ音量</span>
+    <span id="status" class="pill"><i></i><span>確認中</span></span>
+  </header>
+
+  <section class="current" id="current">
+    <img id="current-icon" alt="" width="16" height="16" hidden>
+    <div class="current-text">
+      <span class="label">このタブ</span>
+      <span id="current-title" class="title"></span>
+    </div>
+  </section>
+  <p id="unsupported" class="note" hidden>このページ（Chrome の設定画面など）の音量は変えられません</p>
+
+  <section>
+    <ul id="slots"></ul>
+    <div id="empty" class="empty" hidden>
+      <b>割り当てられる番号がありません</b>
+      deej-tab の設定画面で、スライダーに<br>「Chrome タブ 1」などを割り当てると、ここに出ます
+    </div>
+    <p id="error" class="error" role="alert" hidden></p>
+    <p class="hint">ポップアップを開かなくても、<b>Alt+Shift+A</b>（空いている番号へ。押すたびに次へ移り、最後は解除）・<b>Alt+Shift+1〜2</b>・ページの右クリック →「deej タブ音量」で割り当てられます（キーは chrome://extensions/shortcuts で変更可）</p>
+  </section>
+
+  <section class="method">
+    <h2>音量の変え方</h2>
+    <div class="seg" role="radiogroup" aria-label="音量の変え方">
+      <button data-method="Y" role="radio">タブの音をまとめて調整</button>
+      <button data-method="X" role="radio">ページ内の動画の音量を変える</button>
+    </div>
+    <p id="method-hint" class="hint"></p>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# ビルド・配布物 (GitHub の Releases に載せる)
+app/build/
+app/deej-tab.exe
+release/
+
+# 個人の設定・ログ (config.yaml は初回起動時に初期設定で作られる)
+app/config.yaml
+*.log
+
+# ケースの出力 (STL は Releases に載せる。case.py で作り直せる)
+case/out/
+case.zip
+
+# 開発用のメモ
+引き継ぎメモ.md
