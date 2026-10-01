@@ -164,6 +164,10 @@ baud_rate: 9600
 noise_reduction: default
 websocket_port: 8765
 """
+if IS_MAC:
+    # Mac のポート名は差した口ごとに変わるので仮の名前にしておく (見つからなければ USB のポートを探す)
+    DEFAULT_CONFIG = (DEFAULT_CONFIG.replace("discord.exe", "discord.app")
+                      .replace("com_port: COM3", "com_port: /dev/cu.usbserial"))
 
 CONFIG_HEADER = """\
 # deej-tab の設定
@@ -2767,9 +2771,22 @@ def run_tray(app, port):
         ),
     )
 
+    def on_main(fn):
+        """Mac はメニューバーをメインスレッドでしか触れないので、そちらに頼む"""
+        if IS_MAC:
+            import macsys
+            macsys.on_main(fn)
+        else:
+            fn()
+
+    def show(icon_image, title):
+        icon.icon = icon_image
+        icon.title = title
+        icon.update_menu()
+
     def watch(icon):
         # デバイスの接続状態をアイコン (つまみの色) とツールチップに出す
-        icon.visible = True
+        on_main(lambda: setattr(icon, "visible", True))
         shown = None
         next_tray_check = time.monotonic() + TRAY_CHECK
         while not app.stop.is_set():
@@ -2780,10 +2797,9 @@ def run_tray(app, port):
             if key != shown:
                 shown = key
                 # 一時停止中は未接続と同じ灰色のつまみ (光らせない)
-                icon.icon = icons[state["connected"] and enabled]
-                icon.title = tray_title(state, enabled, lang()) + (
+                title = tray_title(state, enabled, lang()) + (
                     f" [{app.config.active_profile}]" if len(app.config.profiles) > 1 else "")
-                icon.update_menu()
+                on_main(lambda img=icons[state["connected"] and enabled], t=title: show(img, t))
             if time.monotonic() >= next_tray_check:
                 next_tray_check = time.monotonic() + TRAY_CHECK
                 try:

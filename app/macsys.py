@@ -443,7 +443,10 @@ class MacCatalog:
         for n in names:
             title = (windows.get(n) or {}).get("title") or self.titles.get(paths.get(n)) \
                 or (audio.get(n) or {}).get("title") or n[:-4]
-            items.append({"exe": n, "name": title, "audio": n in audio, "window": n in windows,
+            # Mac は音を出さない常駐アプリ (Google Drive など) も Core Audio の利用者に出るので、
+            # 今出力しているものだけを「再生中」にする
+            playing = bool((audio.get(n) or {}).get("output"))
+            items.append({"exe": n, "name": title, "audio": playing, "window": n in windows,
                           "recent": n in self.history, "installed": n in installed})
         items.sort(key=lambda d: d["name"].lower())
         return items
@@ -716,6 +719,13 @@ def set_dock_icon(show):
         NSApplication.sharedApplication().setActivationPolicy_(0 if show else 1)   # Regular / Accessory
     except Exception as e:
         log.warning("Dock の表示を変えられません: %s", e)
+
+
+def on_main(fn):
+    """fn をメインスレッドで動かす (待たない)。メニューバーのアイコン・メニューはメインスレッドでしか触れない
+    (ほかのスレッドから触ると macOS がアプリを落とす)"""
+    from PyObjCTools import AppHelper
+    AppHelper.callAfter(fn)
 
 
 def system_language():

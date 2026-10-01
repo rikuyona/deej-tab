@@ -97,8 +97,13 @@ def build_app():
     })
     with open(plist_path, "wb") as f:
         plistlib.dump(info, f)
-    # Info.plist を書き換えたので署名し直す (自己署名。配布用の Apple の署名はしていない)
+    # Info.plist を書き換えたので署名し直す (自己署名。配布用の Apple の署名はしていない)。
+    # 自己署名のままだと「同じアプリか」を中身のハッシュで見るので、作り直すたびに録音の許可が外れる。
+    # バンドル ID で見るようにして、作り直し・更新しても許可が残るようにする
+    # (中の部品は普通に署名し、外側の .app にだけ条件をつける)
     run(["codesign", "--force", "--deep", "--sign", "-", app])
+    run(["codesign", "--force", "--sign", "-", "-r=designated => identifier \"%s\"" % BUNDLE_ID, app])
+    run(["codesign", "--verify", "--deep", "--strict", app])
 
     os.makedirs(RELEASE, exist_ok=True)
     zip_path = os.path.join(RELEASE, f"deej-tab-{deej_tab.VERSION}-mac.zip")

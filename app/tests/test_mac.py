@@ -121,6 +121,7 @@ class MacCatalogTest(unittest.TestCase):
         self.assertTrue(items["discord.app"]["audio"])
         self.assertTrue(items["safari.app"]["window"])
         self.assertEqual(items["safari.app"]["name"], "Safari")
+        self.assertFalse(items["spotify.app"]["audio"])   # 音を扱うが今は出していない
         self.assertTrue(items["spotify.app"]["recent"])   # 音を扱ったアプリは覚える
         self.assertEqual(self.c.icon("discord.app")[:4], b"\x89PNG")
         self.assertIsNone(self.c.icon("unknown.app"))

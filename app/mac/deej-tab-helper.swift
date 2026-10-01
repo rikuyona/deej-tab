@@ -162,8 +162,15 @@ func appFor(pid: pid_t) -> AppIdent? {
         let r = f(pid)
         if r > 0 { owner = r }
     }
-    guard let path = executablePath(owner) ?? executablePath(pid) else { return nil }
-    let a = appFromPath(path)
+    // 起動中のアプリなら .app の場所を使う (Chrome は更新後、一時フォルダの複製
+    // .../code_sign_clone/.../Google Chrome.app.bundle から動くので、実行ファイルのパスだと名前が狂う)
+    let a: AppIdent
+    if let url = NSRunningApplication(processIdentifier: owner)?.bundleURL, url.pathExtension == "app" {
+        a = appFromPath(url.path)
+    } else {
+        guard let path = executablePath(owner) ?? executablePath(pid) else { return nil }
+        a = appFromPath(path)
+    }
     appCache[pid] = a
     return a
 }
@@ -381,6 +388,15 @@ final class Engine {
     var meterMaster = false
     var volumeTaps: [String: Tap] = [:]
     var meterTaps: [String: Tap] = [:]        // "app:<名前>" / "others" / "master"
+    // meterApps・volumeTaps・meterTaps を書き換える時 (queue の上) と、queue の外から読む時 (peaks) にかける。
+    // Tap を作るのは許可の確認などで何十秒も待たされることがあるので、peaks はそれを待たない
+    let tapsLock = NSLock()
+
+    func locked(_ work: () -> Void) {
+        tapsLock.lock()
+        work()
+        tapsLock.unlock()
+    }
     var outputUID: String? = nil
     var failedAt: [String: Date] = [:]        // 作れなかった Tap (すぐには作り直さない)
     var scheduled = false
@@ -417,6 +433,11 @@ final class Engine {
 
     /// 今のアプリ・設定に合わせて Tap を作る・消す・倍率を変える (queue の上で呼ぶ)
     func reconcile() {
+        let started = Date()
+        defer {
+            let t = Date().timeIntervalSince(started)
+            if t > 0.5 { logError(String(format: "Tap の作り直しに %.1f 秒かかりました", t)) }
+        }
         let procs = audioProcesses()
         var groups: [String: [AudioObjectID]] = [:]
         for p in procs { groups[p.app.name, default: []].append(p.objectID) }
@@ -435,7 +456,7 @@ final class Engine {
             let ids = groups[app]
             if ids == nil || gain(app) >= 0.9999 || Set(ids!) != Set(tap.processes) {
                 tap.stop()
-                volumeTaps[app] = nil
+                locked { volumeTaps[app] = nil }
             }
         }
         for (app, ids) in groups {
@@ -448,7 +469,7 @@ final class Engine {
             let tap = Tap(label: app, processes: ids, global: false, muted: true, gain: g)
             do {
                 try tap.start(outputUID: output)
-                volumeTaps[app] = tap
+                locked { volumeTaps[app] = tap }
             } catch {
                 failedAt["vol:" + app] = Date()
                 logError("\(app): \(error)")
@@ -470,13 +491,13 @@ final class Engine {
         for (key, tap) in meterTaps {
             if let w = wanted[key], Set(w.ids) == Set(tap.processes) { continue }
             tap.stop()
-            meterTaps[key] = nil
+            locked { meterTaps[key] = nil }
         }
         for (key, w) in wanted where meterTaps[key] == nil && !recentlyFailed("meter:" + key) {
             let tap = Tap(label: key, processes: w.ids, global: w.global, muted: false, gain: 1)
             do {
                 try tap.start(outputUID: output)
-                meterTaps[key] = tap
+                locked { meterTaps[key] = tap }
             } catch {
                 failedAt["meter:" + key] = Date()
                 logError("\(key): \(error)")
@@ -492,11 +513,16 @@ final class Engine {
     func stopAll() {
         for t in volumeTaps.values { t.stop() }
         for t in meterTaps.values { t.stop() }
-        volumeTaps = [:]
-        meterTaps = [:]
+        locked {
+            volumeTaps = [:]
+            meterTaps = [:]
+        }
     }
 
+    /// どのスレッドから呼んでもよい
     func peaks() -> [String: Any] {
+        tapsLock.lock()
+        defer { tapsLock.unlock() }
         var apps: [String: Float] = [:]
         for app in meterApps {
             apps[app] = volumeTaps[app]?.takePeak() ?? meterTaps["app:" + app]?.takePeak() ?? 0
@@ -623,7 +649,7 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
         try setVolume(input: (msg["scope"] as? String) == "input", v)
         return [:]
     case "processes":
-        let procs = engine.queue.sync { audioProcesses() }
+        let procs = audioProcesses()
         var apps: [String: [String: Any]] = [:]
         for p in procs {
             var a = apps[p.app.name] ?? ["name": p.app.name, "title": p.app.title, "output": false]
@@ -632,9 +658,11 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
             apps[p.app.name] = a
         }
         return ["processes": Array(apps.values)]
+    // 音量・音の大きさの設定はすぐ返事をして、Tap の作り直しは後で行う
+    // (Tap を作るのは時間がかかることがあり、待つと後ろの命令まで返事が遅れる)
     case "set_gains":
         guard let g = msg["gains"] as? [String: Any] else { throw Fail("gains がありません") }
-        engine.queue.sync {
+        engine.queue.async {
             for (app, v) in g {
                 guard let x = number(v) else { continue }
                 engine.gains[app] = max(0, min(1, x))
@@ -644,7 +672,7 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
         return [:]
     case "set_others":
         let ex = Set((msg["exclude"] as? [String]) ?? [])
-        engine.queue.sync {
+        engine.queue.async {
             engine.others = number(msg["gain"]).map { max(0, min(1, $0)) }
             engine.othersExclude = ex
             // 「そのほか」を変えたら、そのほかのアプリの個別の倍率は消す (後から変えたほうが効く)
@@ -653,7 +681,7 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
         }
         return [:]
     case "reset":
-        engine.queue.sync {
+        engine.queue.async {
             engine.gains = [:]
             engine.others = nil
             engine.othersExclude = []
@@ -661,15 +689,16 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
         }
         return [:]
     case "meter":
-        engine.queue.sync {
-            engine.meterApps = Set((msg["apps"] as? [String]) ?? [])
+        engine.queue.async {
+            let apps = Set((msg["apps"] as? [String]) ?? [])
+            engine.locked { engine.meterApps = apps }
             engine.meterOthers = (msg["others_exclude"] as? [String]).map { Set($0) }
             engine.meterMaster = (msg["master"] as? Bool) ?? false
             engine.reconcile()
         }
         return [:]
     case "peaks":
-        return engine.queue.sync { engine.peaks() }
+        return engine.peaks()
     case "front":
         return frontApp()
     case "apps":

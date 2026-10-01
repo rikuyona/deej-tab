@@ -1621,9 +1621,9 @@ function keyName(code) {
   if (/^F\d{1,2}$/.test(code)) return code.toLowerCase();
   return CODE_KEYS[code] || null;
 }
-// Mac のキーの呼び方 (設定ファイルの書き方は Windows と同じ。win = Command)
-const MAC_KEYS = { ctrl: 'Control', alt: 'Option', win: 'Command' };
-const prettyHotkey = (spec) => spec ? spec.split('+').map((k) => (PLATFORM === 'mac' && MAC_KEYS[k]) || (k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1))).join(' + ') : '';
+// Mac は修飾キーを記号で書く (⌃⌥⇧⌘P。設定ファイルの書き方は Windows と同じ。win = Command)
+const MAC_KEYS = { ctrl: '⌃', alt: '⌥', shift: '⇧', win: '⌘' };
+const prettyHotkey = (spec) => spec ? spec.split('+').map((k) => (PLATFORM === 'mac' && MAC_KEYS[k]) || (k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1))).join(PLATFORM === 'mac' ? '' : ' + ') : '';
 function setHotkeyBox(input, spec) {
   if (document.activeElement !== input) input.value = prettyHotkey(spec || '');
 }

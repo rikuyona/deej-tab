@@ -1,14 +1,14 @@
 # Mac 版 deej-tab 引き継ぎ（Mac の Claude Code 向け）
 
-Windows 上で Mac 版のコードを書いたが、**Mac では一度もビルド・実行していない**。
-この Mac でビルドと実機確認をして、動くところまで直すのが仕事。
+Windows 上で Mac 版のコードを書き、2026-10-02 に Mac（macOS 27.2・Apple シリコン）でビルドと実機確認をした。
+結果は下の「Mac での確認結果」。**Chrome 拡張（タブの音量）はまだ試していない**。
 
 ## 前提・お願い
 
 - ユーザーへの返答・説明はすべて日本語。コード内のコメントも既存に合わせて日本語（です・ます調ではなく、短い説明調）
 - **Windows 版の動作は変えないこと**。OS の分岐は `IS_MAC` / `sys.platform` で行う
 - 対応 OS は macOS 14.2 以降（Process Tap がこの版から）
-- 変更は未コミット（2026-10-02 時点）。コミット・プッシュはユーザーに確認してから
+- `mac-version` ブランチで作業している。コミット・プッシュはユーザーに確認してから
 
 ## プロジェクトの概要
 
@@ -91,7 +91,35 @@ Nano から USB シリアルで `v0|v1|...|v5`（0〜1023）が届き、`config.
 6. アプリにする：`.venv-mac/bin/python build_mac.py` → `build/dist/deej-tab.app` を起動して同じ確認（メニューバーだけに出る・設定画面のときだけ Dock に出る・許可のダイアログが deej-tab の名前で出る）
 7. 直したことを README の「Mac 版について」と、この文書に反映する
 
-## 実機で確かめたい不安な点
+## Mac での確認結果（2026-10-02）
+
+確認方法：Homebrew の Python 3.12 の venv、偽の Nano（`socket://127.0.0.1:9000` に値を送るだけのスクリプト）、`build_mac.py` で作った `deej-tab.app`。
+
+動いたもの：
+- テスト 112 件、Swift のコンパイル（警告のみ）、arm64＋x86_64 の lipo
+- 全体音量（スライダーに追従）、アプリごとの音量（Chrome の音が 100% / 0% で鳴る・消えるのを耳で確認）
+- deej.current・deej.unmapped（エラーなし。unmapped を下げても coreaudiod の CPU は +3% 程度）
+- 設定画面（WKWebView）・アプリ選択ダイアログとアイコン・Mac 向けの文言
+- 本物の Nano（deej-6ch-led 1.3）：初期設定の `/dev/cu.usbserial` から `/dev/cu.usbserial-110`（CH340）を自動で見つけた。ノブ（全体音量）・スライダー・LED
+- メニューバーのアイコンとメニュー、一時停止、ログイン時の自動起動（LaunchAgent の作成・削除）、ショートカット（⌃⌥⇧P で一時停止の切り替え）
+
+直したこと：
+- **メニューバーを別スレッドから触って落ちていた**（`NSStatusItem setMenu:` で SIGTRAP）→ `macsys.on_main`（`AppHelper.callAfter`）でメインスレッドから更新
+- **Chrome の名前が `google chrome`（.app なし）になっていた**：更新後の Chrome は `…/code_sign_clone/…/Google Chrome.app.bundle` から動くため → 補助プログラムで `NSRunningApplication` の bundleURL を先に使う
+- **録音の許可を待つ間（Tap の `AudioDeviceStart` が返事待ちで止まる）、ほかの命令まで止まっていた** → `set_gains` / `set_others` / `reset` / `meter` はすぐ返事をし、Tap の作り直しは後で行う。`peaks` / `processes` は Tap の作り直しを待たない（`tapsLock`）。作り直しに 0.5 秒以上かかったらログに出す
+- **作り直すたびに録音の許可が外れていた**（自己署名は中身のハッシュで同じアプリかを見るため）→ `.app` の署名の条件を `identifier "io.github.rikuyona.deej-tab"` にした。作り直しても許可が残ることを確認
+- 初期設定が Mac でも `discord.exe` / `COM3` だった → `discord.app` / `/dev/cu.usbserial`（なければ USB のポートを探す）
+- 音を出さない常駐アプリ（Google Drive など）まで「♪ 再生中」に出ていた → 今出力しているものだけにした
+- ショートカットの欄で `Control + Option + Shift + P` が切れていた → Mac は `⌃⌥⇧P` と記号で出す
+
+わかったこと：
+- Claude Code など、ターミナル以外の子プロセスとして動かすと許可のダイアログが出ず、Tap は作れても音が 0 で届く（アプリの音は消える）。試すときは `.app` で
+- 補助プログラムは「自分と同じアプリ」の音を除くので、Claude Code から起動した `afplay` などは一覧に出ない（仕様どおり）
+- 集約デバイスの入力は Tap の 2ch だけだった（この Mac の出力デバイスの場合）
+
+## 実機で確かめたい不安な点（残り）
+
+- Chrome 拡張（タブの音量）
 
 - 集約デバイスの入力に、出力デバイス自身の入力（USB オーディオインターフェースなど）が Tap より前に並ぶか（今は「最後の 2ch が Tap」としている）
 - `mutedWhenTapped` の Tap で、音が二重に出たり途切れたりしないか。倍率を 1 に戻して Tap を消す時のプツッという音
