@@ -708,6 +708,20 @@ const I18N_EN = {
   'プロファイルの名前は 1〜24 文字で付けてください (前後の空白なし)': 'Profile names must be 1–24 characters (no leading or trailing spaces)',
   '使用中のプロファイルは消せません。先に別のプロファイルに切り替えてください': "You can't delete the active profile. Switch to another profile first",
   '端の位置を測っていません': 'Nothing has been measured', 'アプリ一覧が使えません': "The app list isn't available", '接続先が空です': 'Port is empty',
+  'Ctrl・Alt・Shift・Win のどれかと組み合わせてください': 'Combine with Ctrl, Alt, Shift or Win',
+  'Control・Option・Shift・Command のどれかと組み合わせてください': 'Combine with Control, Option, Shift or Command',
+  // Mac 版の文言 (MAC_TEXT で置き換えた後の日本語。後から英語に切り替えた時に使う)
+  'ログイン時に自動で起動': 'Start at login', 'メニューバーに常駐します': 'Runs in the menu bar',
+  'Mac の出力音量': 'Mac output volume',
+  'Mac の言語設定に合わせるか、選んだ言語で表示します': 'Follow the Mac language setting, or choose one',
+  'Mac の出力・マイク・OBS の音量を、deej-tab が変える前に戻します（アプリと Chrome のタブはいつも元に戻ります）':
+    'Restores the Mac output, microphone and OBS volumes to what they were before deej-tab changed them (apps and Chrome tabs are always restored)',
+  '例: /dev/cu.usbserial-110': 'e.g. /dev/cu.usbserial-110',
+  '一覧にないアプリをアプリケーションフォルダから選ぶ…': 'Choose an app from the Applications folder…',
+  'アプリを選ぶ (例: discord.app)': 'Choose an app (e.g. discord.app)',
+  'コントローラーをつないだ USB のシリアルポート': 'The USB serial port the controller is connected to',
+  'オフにすると、スライダーを動かしても音量は変わりません（メニューバーのメニューからも切り替えられます）':
+    "Turn off to stop the sliders from changing the volume (also in the menu bar menu)",
   'ポート番号は 1〜65535 です': 'Port must be 1–65535', '受信なし': 'No data received', 'ほかのアプリが使っているため登録できません': 'In use by another app',
   '切断されました': 'Disconnected', 'OBS との接続が切れました': 'Lost connection to OBS', 'OBS のパスワードが違います': 'Wrong OBS password',
   'OBS に接続できません (OBS が起動していて、WebSocket サーバーが有効か確認してください)': "Can't connect to OBS (make sure OBS is running and its WebSocket server is enabled)",
@@ -749,6 +763,8 @@ const I18N_EN_RE = [
   [/^プロファイルがありません: (.+)$/, (m) => `No such profile: ${m[1]}`],
   [/^同じ名前のプロファイルがあります: (.+)$/, (m) => `A profile with that name already exists: ${m[1]}`],
   [/^アプリの exe 名（例: valorant.exe）を入れてください: (.*)$/, (m) => `Enter an app's exe name (e.g. valorant.exe): ${m[1]}`],
+  [/^アプリの名前（例: discord.app）を入れてください: (.*)$/, (m) => `Enter an app name (e.g. discord.app): ${m[1]}`],
+  [/^アプリ \(\.app\) ではありません: (.*)$/, (m) => `Not an app (.app): ${m[1]}`],
   [/^スライダーの番号が範囲外です: (.+)$/, (m) => `Slider number out of range: ${m[1]}`],
   [/^割り当て先として使えない名前です: (.+)$/, (m) => `Can't be used as a target: ${m[1]}`],
   [/^変更できない設定です: (.+)$/, (m) => `This setting can't be changed: ${m[1]}`],
@@ -764,8 +780,43 @@ const I18N_ATTRS = ['placeholder', 'title', 'aria-label'];
 let LANG = 'ja';
 try { LANG = localStorage.getItem('deej-lang') === 'en' ? 'en' : 'ja'; } catch (e) { /* 保存できない環境 */ }
 
+// Mac では Windows 向けの文言を差し替える (英訳した後に置き換えるので、日本語・英語の両方を書く)
+const PLATFORM = document.documentElement.dataset.platform === 'mac' ? 'mac' : 'win';
+const APP_EXT = PLATFORM === 'mac' ? '.app' : '.exe';
+const MAC_TEXT = {
+  'Windows の起動時に自動で起動': 'ログイン時に自動で起動',
+  'Windows のマスター音量': 'Mac の出力音量',
+  'Windows の表示言語に合わせるか、選んだ言語で表示します': 'Mac の言語設定に合わせるか、選んだ言語で表示します',
+  'Windows・OBS の音量を、deej-tab が変える前に戻します（Chrome のタブはいつも元に戻ります）':
+    'Mac の出力・マイク・OBS の音量を、deej-tab が変える前に戻します（アプリと Chrome のタブはいつも元に戻ります）',
+  '例: COM5': '例: /dev/cu.usbserial-110',
+  '一覧にないアプリを exe ファイルから選ぶ…': '一覧にないアプリをアプリケーションフォルダから選ぶ…',
+  'アプリを選ぶ (例: valorant.exe)': 'アプリを選ぶ (例: discord.app)',
+  'Start with Windows': 'Start at login',
+  'Windows master volume': 'Mac output volume',
+  'Follow the Windows display language, or choose one': 'Follow the Mac language setting, or choose one',
+  'Restores Windows and OBS volumes to what they were before deej-tab changed them (Chrome tabs are always restored)':
+    'Restores the Mac output, microphone and OBS volumes to what they were before deej-tab changed them (apps and Chrome tabs are always restored)',
+  'e.g. COM5': 'e.g. /dev/cu.usbserial-110',
+  "Choose an app's exe file…": 'Choose an app from the Applications folder…',
+  'Choose an app (e.g. valorant.exe)': 'Choose an app (e.g. discord.app)',
+};
+const MAC_PARTS = [['の COM ポート', 'のシリアルポート'], ['COM port', 'serial port'], ['タスクトレイ', 'メニューバー'],
+  ['system tray', 'menu bar'], ['tray menu', 'menu bar menu']];
+function macText(s) {
+  if (PLATFORM !== 'mac' || !s) return s;
+  const key = s.replace(/\s+/g, ' ').trim();
+  if (key in MAC_TEXT) return s.replace(s.trim(), MAC_TEXT[key]);
+  for (const [a, b] of MAC_PARTS) if (s.includes(a)) s = s.split(a).join(b);
+  return s;
+}
+const NEED_TR = () => LANG === 'en' || PLATFORM === 'mac';
+
 function trText(s) {
-  /** 1 つの文言を今の言語にする。表になければそのまま */
+  /** 1 つの文言を今の言語 (と OS) にする。表になければそのまま */
+  return macText(trLang(s));
+}
+function trLang(s) {
   if (LANG !== 'en' || !s || !I18N_JP.test(s)) return s;
   const key = s.replace(/\s+/g, ' ').trim();
   if (key in I18N_EN) return s.replace(s.trim(), I18N_EN[key]);
@@ -806,7 +857,7 @@ function trNode(node) {
   }
 }
 const i18nObserver = new MutationObserver((list) => {
-  if (LANG !== 'en') return;
+  if (!NEED_TR()) return;
   for (const m of list) {
     if (m.type === 'characterData') trNode(m.target);
     else if (m.type === 'attributes') trNode(m.target);
@@ -824,7 +875,7 @@ function applyLang(lang) {
 }
 function startI18n() {
   document.documentElement.lang = LANG;
-  if (LANG !== 'en') return;
+  if (!NEED_TR()) return;
   trNode(document.body);
   i18nObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: I18N_ATTRS });
 }
@@ -866,7 +917,7 @@ let ws = null;
 
 // ---------------------------------------------------------------- 表示用
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const prettyExe = (t) => { const b = t.replace(/\.exe$/, ''); return b.charAt(0).toUpperCase() + b.slice(1); };
+const prettyExe = (t) => { const b = t.replace(/\.(exe|app)$/, ''); return b.charAt(0).toUpperCase() + b.slice(1); };
 // アプリのアイコン (アプリ本体から取り出したもの)。取れなければ汎用のアイコンに差し替える (下の error)
 const appIcon = (exe) => `<img class="ico appico" alt="" loading="lazy" src="/appicon/${encodeURIComponent(exe)}">`;
 document.addEventListener('error', (e) => {
@@ -1050,7 +1101,7 @@ function pickerGroups(i) {
   const mine = new Set(targetsOf(i));
   const apps = state.apps.filter((a) => !mine.has(a.exe));
   const groups = [
-    ['基本', ['master', 'system', 'mic']],
+    ['基本', PLATFORM === 'mac' ? ['master', 'mic'] : ['master', 'system', 'mic']],   // Mac にはシステム音だけの音量がない
     ['自動で切り替わる', ['deej.current', 'deej.game', 'deej.unmapped']],
     ['Chrome タブ', [1, 2, 3, 4, 5, 6].map((n) => 'tab.' + n)],
     ['音を出しているアプリ', apps.filter((a) => a.audio).map((a) => a.exe)],
@@ -1095,7 +1146,7 @@ function openPicker(i, anchor) {
         return t.includes(q) || d.title.toLowerCase().includes(q);
       });
       if (!hits.length) continue;
-      appHits += hits.filter((t) => t.endsWith('.exe')).length;
+      appHits += hits.filter((t) => t.endsWith(APP_EXT)).length;
       list.insertAdjacentHTML('beforeend', `<div class="grp">${name}</div>`);
       for (const t of hits) {
         const d = describe(t);
@@ -1111,9 +1162,9 @@ function openPicker(i, anchor) {
         list.appendChild(b);
       }
     }
-    // 手入力 (一覧にないアプリも割り当てられるように)。一覧で見つかった時は、.exe まで打った時だけ出す
-    if (q && /^[\w .\-()+&']+$/.test(q) && (!appHits || q.endsWith('.exe'))) {
-      const name = q.endsWith('.exe') ? q : q + '.exe';
+    // 手入力 (一覧にないアプリも割り当てられるように)。一覧で見つかった時は、.exe (Mac は .app) まで打った時だけ出す
+    if (q && /^[\w .\-()+&']+$/.test(q) && (!appHits || q.endsWith(APP_EXT))) {
+      const name = q.endsWith(APP_EXT) ? q : q + APP_EXT;
       if (!targetsOf(i).includes(name) && !state.appsByExe[name]) {
         list.insertAdjacentHTML('beforeend', `<div class="grp">アプリ名で追加</div>`);
         const b = document.createElement('button');
@@ -1570,7 +1621,9 @@ function keyName(code) {
   if (/^F\d{1,2}$/.test(code)) return code.toLowerCase();
   return CODE_KEYS[code] || null;
 }
-const prettyHotkey = (spec) => spec ? spec.split('+').map((k) => k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1)).join(' + ') : '';
+// Mac のキーの呼び方 (設定ファイルの書き方は Windows と同じ。win = Command)
+const MAC_KEYS = { ctrl: 'Control', alt: 'Option', win: 'Command' };
+const prettyHotkey = (spec) => spec ? spec.split('+').map((k) => (PLATFORM === 'mac' && MAC_KEYS[k]) || (k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1))).join(' + ') : '';
 function setHotkeyBox(input, spec) {
   if (document.activeElement !== input) input.value = prettyHotkey(spec || '');
 }
@@ -1677,7 +1730,7 @@ function openProfilePanel(name, anchor) {
     const addApp = () => {
       let v = el.querySelector('#pp-app').value.trim().toLowerCase();
       if (!v) return;
-      if (!v.endsWith('.exe')) v += '.exe';
+      if (!v.endsWith(APP_EXT)) v += APP_EXT;
       send({ type: 'profile_update', name, auto_apps: [...p.auto_apps, v] });
     };
     el.querySelector('#pp-app-add').addEventListener('click', addApp);

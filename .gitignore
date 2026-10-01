@@ -2,9 +2,11 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-mac/
 
 # ビルド・配布物 (GitHub の Releases に載せる)
 app/build/
+app/mac/build/
 app/deej-tab.exe
 release/
 
