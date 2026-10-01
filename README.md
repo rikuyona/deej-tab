@@ -3,7 +3,8 @@
 物理スライダーで、Windows のアプリごとの音量と **Chrome のタブごとの音量** を操作する自作ミキサーです。
 [deej](https://github.com/omriharel/deej) を元に、PC アプリ・Chrome 拡張機能・LED 付きファームウェア・3D プリント用ケースまでまとめてあります。
 
-<!-- 実物の写真をここに: ![deej-tab](docs/photo.jpg) -->
+<p align="center"><img src="docs/images/hero.jpg" alt="deej-tab の完成イメージ" width="720"></p>
+<p align="center"><sub>完成イメージ（3D レンダリング）。スライダー 5 本・ノブ 1 つ、外形 126×126mm</sub></p>
 
 ![設定画面：スライダーを動かすと、割り当てた音量がリアルタイムに変わる](docs/images/mixer.gif)
 
@@ -92,6 +93,11 @@ D0 / D1 は USB シリアルに使うので空けておきます。
 ### 4. ケースを印刷する（任意）
 
 ケース・ツマミの 3D データは MakerWorld で配布しています。印刷設定と組み立て方もそちらにあります。
+
+| 分解図 | スライダーのツマミ | 上から |
+|---|---|---|
+| <img src="docs/images/case_exploded.jpg" alt="分解図" width="260"> | <img src="docs/images/case_knobs.jpg" alt="スライダーのツマミ" width="260"> | <img src="docs/images/case_top.jpg" alt="上から" width="260"> |
+| 天板・底ケース・Arduino Nano 固定クリップの 3 部品＋ツマミ | 黒い外殻と白い芯の 2 色。LED の光で白い線が光ります | 目盛りと番号は彫り。塗料を流し込んで色を付けます |
 
 **MakerWorld：**（準備中）
 
