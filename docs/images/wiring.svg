@@ -1,0 +1,323 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900" font-family='"Segoe UI","Yu Gothic UI","Hiragino Sans","Noto Sans JP",sans-serif'>
+<rect width="1200" height="900" fill="#ffffff"/>
+<text x="30" y="44" font-size="24" font-weight="700" fill="#222">deej-tab 配線図</text>
+<text x="30" y="70" font-size="14" fill="#555">同じ名前の札どうしをつなぎます。5V と GND は全部の部品で共通です</text>
+<rect x="70" y="120" width="230" height="600" rx="12" fill="#1f5fa8"/>
+<rect x="151.0" y="102" width="68" height="34" rx="6" fill="#c9ced6" stroke="#8a919c"/>
+<text x="185.0" y="125" text-anchor="middle" font-size="12" font-weight="700" fill="#333">USB-C</text>
+<text x="185.0" y="412.0" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">Arduino</text>
+<text x="185.0" y="436.0" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">Nano</text>
+<circle cx="88" cy="160.0" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="165.0" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">D13</text>
+<circle cx="282" cy="160.0" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="165.0" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">D12</text>
+<circle cx="88" cy="198.6" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="203.6" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">3V3</text>
+<circle cx="282" cy="198.6" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="203.6" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">D11</text>
+<circle cx="88" cy="237.1" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="242.1" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">REF</text>
+<circle cx="282" cy="237.1" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="270" y="242.1" text-anchor="end" font-size="13" font-weight="700" fill="#fff">D10</text>
+<line x1="288" y1="237.14285714285714" x2="316" y2="237.14285714285714" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="316.0" y="226.14285714285714" width="33.6" height="22" rx="5" fill="#e8710a"/>
+<text x="332.8" y="242.14285714285714" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D10</text>
+<circle cx="88" cy="275.7" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="280.7" text-anchor="start" font-size="13" font-weight="700" fill="#fff">A0</text>
+<line x1="82" y1="275.7142857142857" x2="54" y2="275.7142857142857" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="264.7142857142857" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="41.3" y="280.7142857142857" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A0</text>
+<circle cx="282" cy="275.7" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="270" y="280.7" text-anchor="end" font-size="13" font-weight="700" fill="#fff">D9</text>
+<line x1="288" y1="275.7142857142857" x2="316" y2="275.7142857142857" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="316.0" y="264.7142857142857" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="328.7" y="280.7142857142857" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D9</text>
+<circle cx="88" cy="314.3" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="319.3" text-anchor="start" font-size="13" font-weight="700" fill="#fff">A1</text>
+<line x1="82" y1="314.2857142857143" x2="54" y2="314.2857142857143" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="303.2857142857143" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="41.3" y="319.2857142857143" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A1</text>
+<circle cx="282" cy="314.3" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="319.3" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">D8</text>
+<circle cx="88" cy="352.9" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="357.9" text-anchor="start" font-size="13" font-weight="700" fill="#fff">A2</text>
+<line x1="82" y1="352.85714285714283" x2="54" y2="352.85714285714283" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="341.85714285714283" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="41.3" y="357.85714285714283" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A2</text>
+<circle cx="282" cy="352.9" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="357.9" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">D7</text>
+<circle cx="88" cy="391.4" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="396.4" text-anchor="start" font-size="13" font-weight="700" fill="#fff">A3</text>
+<line x1="82" y1="391.42857142857144" x2="54" y2="391.42857142857144" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="380.42857142857144" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="41.3" y="396.42857142857144" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A3</text>
+<circle cx="282" cy="391.4" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="270" y="396.4" text-anchor="end" font-size="13" font-weight="700" fill="#fff">D6</text>
+<line x1="288" y1="391.42857142857144" x2="316" y2="391.42857142857144" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="316.0" y="380.42857142857144" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="328.7" y="396.42857142857144" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D6</text>
+<circle cx="88" cy="430.0" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="435.0" text-anchor="start" font-size="13" font-weight="700" fill="#fff">A4</text>
+<line x1="82" y1="430.0" x2="54" y2="430.0" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="419.0" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="41.3" y="435.0" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A4</text>
+<circle cx="282" cy="430.0" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="270" y="435.0" text-anchor="end" font-size="13" font-weight="700" fill="#fff">D5</text>
+<line x1="288" y1="430.0" x2="316" y2="430.0" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="316.0" y="419.0" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="328.7" y="435.0" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D5</text>
+<circle cx="88" cy="468.6" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="473.6" text-anchor="start" font-size="13" font-weight="700" fill="#fff">A5</text>
+<line x1="82" y1="468.57142857142856" x2="54" y2="468.57142857142856" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="457.57142857142856" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="41.3" y="473.57142857142856" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A5</text>
+<circle cx="282" cy="468.6" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="473.6" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">D4</text>
+<circle cx="88" cy="507.1" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="512.1" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">A6</text>
+<circle cx="282" cy="507.1" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="270" y="512.1" text-anchor="end" font-size="13" font-weight="700" fill="#fff">D3</text>
+<line x1="288" y1="507.1428571428571" x2="316" y2="507.1428571428571" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="316.0" y="496.1428571428571" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="328.7" y="512.1428571428571" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D3</text>
+<circle cx="88" cy="545.7" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="550.7" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">A7</text>
+<circle cx="282" cy="545.7" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="550.7" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">D2</text>
+<circle cx="88" cy="584.3" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="100" y="589.3" text-anchor="start" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="82" y1="584.2857142857142" x2="54" y2="584.2857142857142" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="28.6" y="573.2857142857142" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="41.3" y="589.2857142857142" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<circle cx="282" cy="584.3" r="6" fill="#f2c94c" stroke="#123" stroke-width="1"/>
+<text x="270" y="589.3" text-anchor="end" font-size="13" font-weight="700" fill="#fff">GND</text>
+<line x1="288" y1="584.2857142857142" x2="316" y2="584.2857142857142" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="316.0" y="573.2857142857142" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="332.8" y="589.2857142857142" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<circle cx="88" cy="622.9" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="627.9" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">RST</text>
+<circle cx="282" cy="622.9" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="627.9" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">RST</text>
+<circle cx="88" cy="661.4" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="666.4" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">GND</text>
+<circle cx="282" cy="661.4" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="666.4" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">RX0</text>
+<circle cx="88" cy="700.0" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="100" y="705.0" text-anchor="start" font-size="13" font-weight="400" fill="#c7d6ea">VIN</text>
+<circle cx="282" cy="700.0" r="6" fill="#7fa6d6" stroke="#123" stroke-width="1"/>
+<text x="270" y="705.0" text-anchor="end" font-size="13" font-weight="400" fill="#c7d6ea">TX1</text>
+<text x="185.0" y="752" text-anchor="middle" font-size="12" fill="#666">端子は USB 側から順に並んでいます</text>
+<text x="185.0" y="770" text-anchor="middle" font-size="12" fill="#666">左右の向きは基板の印字でも確認してください</text>
+<text x="185.0" y="788" text-anchor="middle" font-size="12" fill="#666">D0（RX0）・D1（TX1）は USB 通信用なので使いません</text>
+<text x="470" y="102" font-size="14" font-weight="700" fill="#222">スライダー 1</text>
+<rect x="530" y="110" width="440" height="64" rx="6" fill="#f1f3f4" stroke="#bdc1c6"/>
+<rect x="600" y="138.0" width="300" height="8" rx="4" fill="#dadce0"/>
+<rect x="656.0" y="120" width="20" height="44" rx="3" fill="#333"/>
+<circle cx="546" cy="120" r="5.5" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>
+<text x="557" y="125" text-anchor="start" font-size="14" font-weight="700" fill="#333">2</text>
+<circle cx="546" cy="134" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="139" text-anchor="start" font-size="14" font-weight="700" fill="#333">1</text>
+<circle cx="546" cy="148" r="5.5" fill="#fff" stroke="#9aa0a6" stroke-width="2.5"/>
+<text x="557" y="153" text-anchor="start" font-size="14" font-weight="700" fill="#333">L</text>
+<circle cx="546" cy="162" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="167" text-anchor="start" font-size="14" font-weight="700" fill="#333">E</text>
+<line x1="540" y1="120" x2="464" y2="120" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="438.6" y="109" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="451.3" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A0</text>
+<line x1="540" y1="134" x2="490" y2="134" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="490" y1="134" x2="490" y2="162" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="540" y1="162" x2="490" y2="162" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<circle cx="490" cy="162" r="3.5" fill="#202124"/>
+<line x1="490" y1="162" x2="464" y2="162" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="430.4" y="151" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="447.2" y="167" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<circle cx="954" cy="134" r="5.5" fill="#fff" stroke="#d93025" stroke-width="2.5"/>
+<text x="943" y="139" text-anchor="end" font-size="14" font-weight="700" fill="#333">3</text>
+<circle cx="954" cy="162" r="5.5" fill="#fff" stroke="#e8710a" stroke-width="2.5"/>
+<text x="943" y="167" text-anchor="end" font-size="14" font-weight="700" fill="#333">B</text>
+<line x1="960" y1="134" x2="1040" y2="134" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1040.0" y="123" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="1052.7" y="139" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="960" y1="162" x2="1034" y2="162" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="1034" y1="162" x2="1042" y2="162" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1042" y="155" width="30" height="14" rx="2" fill="#fff" stroke="#e8710a" stroke-width="2"/>
+<line x1="1072" y1="162" x2="1080" y2="162" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1086.0" y="151" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="1098.7" y="167" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D3</text>
+<text x="470" y="200" font-size="14" font-weight="700" fill="#222">スライダー 2</text>
+<rect x="530" y="208" width="440" height="64" rx="6" fill="#f1f3f4" stroke="#bdc1c6"/>
+<rect x="600" y="236.0" width="300" height="8" rx="4" fill="#dadce0"/>
+<rect x="754.0" y="218" width="20" height="44" rx="3" fill="#333"/>
+<circle cx="546" cy="218" r="5.5" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>
+<text x="557" y="223" text-anchor="start" font-size="14" font-weight="700" fill="#333">2</text>
+<circle cx="546" cy="232" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="237" text-anchor="start" font-size="14" font-weight="700" fill="#333">1</text>
+<circle cx="546" cy="246" r="5.5" fill="#fff" stroke="#9aa0a6" stroke-width="2.5"/>
+<text x="557" y="251" text-anchor="start" font-size="14" font-weight="700" fill="#333">L</text>
+<circle cx="546" cy="260" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="265" text-anchor="start" font-size="14" font-weight="700" fill="#333">E</text>
+<line x1="540" y1="218" x2="464" y2="218" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="438.6" y="207" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="451.3" y="223" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A1</text>
+<line x1="540" y1="232" x2="490" y2="232" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="490" y1="232" x2="490" y2="260" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="540" y1="260" x2="490" y2="260" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<circle cx="490" cy="260" r="3.5" fill="#202124"/>
+<line x1="490" y1="260" x2="464" y2="260" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="430.4" y="249" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="447.2" y="265" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<circle cx="954" cy="232" r="5.5" fill="#fff" stroke="#d93025" stroke-width="2.5"/>
+<text x="943" y="237" text-anchor="end" font-size="14" font-weight="700" fill="#333">3</text>
+<circle cx="954" cy="260" r="5.5" fill="#fff" stroke="#e8710a" stroke-width="2.5"/>
+<text x="943" y="265" text-anchor="end" font-size="14" font-weight="700" fill="#333">B</text>
+<line x1="960" y1="232" x2="1040" y2="232" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1040.0" y="221" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="1052.7" y="237" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="960" y1="260" x2="1034" y2="260" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="1034" y1="260" x2="1042" y2="260" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1042" y="253" width="30" height="14" rx="2" fill="#fff" stroke="#e8710a" stroke-width="2"/>
+<line x1="1072" y1="260" x2="1080" y2="260" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1086.0" y="249" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="1098.7" y="265" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D5</text>
+<text x="470" y="298" font-size="14" font-weight="700" fill="#222">スライダー 3</text>
+<rect x="530" y="306" width="440" height="64" rx="6" fill="#f1f3f4" stroke="#bdc1c6"/>
+<rect x="600" y="334.0" width="300" height="8" rx="4" fill="#dadce0"/>
+<rect x="824.0" y="316" width="20" height="44" rx="3" fill="#333"/>
+<circle cx="546" cy="316" r="5.5" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>
+<text x="557" y="321" text-anchor="start" font-size="14" font-weight="700" fill="#333">2</text>
+<circle cx="546" cy="330" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="335" text-anchor="start" font-size="14" font-weight="700" fill="#333">1</text>
+<circle cx="546" cy="344" r="5.5" fill="#fff" stroke="#9aa0a6" stroke-width="2.5"/>
+<text x="557" y="349" text-anchor="start" font-size="14" font-weight="700" fill="#333">L</text>
+<circle cx="546" cy="358" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="363" text-anchor="start" font-size="14" font-weight="700" fill="#333">E</text>
+<line x1="540" y1="316" x2="464" y2="316" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="438.6" y="305" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="451.3" y="321" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A2</text>
+<line x1="540" y1="330" x2="490" y2="330" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="490" y1="330" x2="490" y2="358" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="540" y1="358" x2="490" y2="358" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<circle cx="490" cy="358" r="3.5" fill="#202124"/>
+<line x1="490" y1="358" x2="464" y2="358" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="430.4" y="347" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="447.2" y="363" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<circle cx="954" cy="330" r="5.5" fill="#fff" stroke="#d93025" stroke-width="2.5"/>
+<text x="943" y="335" text-anchor="end" font-size="14" font-weight="700" fill="#333">3</text>
+<circle cx="954" cy="358" r="5.5" fill="#fff" stroke="#e8710a" stroke-width="2.5"/>
+<text x="943" y="363" text-anchor="end" font-size="14" font-weight="700" fill="#333">B</text>
+<line x1="960" y1="330" x2="1040" y2="330" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1040.0" y="319" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="1052.7" y="335" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="960" y1="358" x2="1034" y2="358" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="1034" y1="358" x2="1042" y2="358" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1042" y="351" width="30" height="14" rx="2" fill="#fff" stroke="#e8710a" stroke-width="2"/>
+<line x1="1072" y1="358" x2="1080" y2="358" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1086.0" y="347" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="1098.7" y="363" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D6</text>
+<text x="470" y="396" font-size="14" font-weight="700" fill="#222">スライダー 4</text>
+<rect x="530" y="404" width="440" height="64" rx="6" fill="#f1f3f4" stroke="#bdc1c6"/>
+<rect x="600" y="432.0" width="300" height="8" rx="4" fill="#dadce0"/>
+<rect x="712.0" y="414" width="20" height="44" rx="3" fill="#333"/>
+<circle cx="546" cy="414" r="5.5" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>
+<text x="557" y="419" text-anchor="start" font-size="14" font-weight="700" fill="#333">2</text>
+<circle cx="546" cy="428" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="433" text-anchor="start" font-size="14" font-weight="700" fill="#333">1</text>
+<circle cx="546" cy="442" r="5.5" fill="#fff" stroke="#9aa0a6" stroke-width="2.5"/>
+<text x="557" y="447" text-anchor="start" font-size="14" font-weight="700" fill="#333">L</text>
+<circle cx="546" cy="456" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="461" text-anchor="start" font-size="14" font-weight="700" fill="#333">E</text>
+<line x1="540" y1="414" x2="464" y2="414" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="438.6" y="403" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="451.3" y="419" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A3</text>
+<line x1="540" y1="428" x2="490" y2="428" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="490" y1="428" x2="490" y2="456" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="540" y1="456" x2="490" y2="456" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<circle cx="490" cy="456" r="3.5" fill="#202124"/>
+<line x1="490" y1="456" x2="464" y2="456" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="430.4" y="445" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="447.2" y="461" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<circle cx="954" cy="428" r="5.5" fill="#fff" stroke="#d93025" stroke-width="2.5"/>
+<text x="943" y="433" text-anchor="end" font-size="14" font-weight="700" fill="#333">3</text>
+<circle cx="954" cy="456" r="5.5" fill="#fff" stroke="#e8710a" stroke-width="2.5"/>
+<text x="943" y="461" text-anchor="end" font-size="14" font-weight="700" fill="#333">B</text>
+<line x1="960" y1="428" x2="1040" y2="428" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1040.0" y="417" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="1052.7" y="433" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="960" y1="456" x2="1034" y2="456" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="1034" y1="456" x2="1042" y2="456" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1042" y="449" width="30" height="14" rx="2" fill="#fff" stroke="#e8710a" stroke-width="2"/>
+<line x1="1072" y1="456" x2="1080" y2="456" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1086.0" y="445" width="25.4" height="22" rx="5" fill="#e8710a"/>
+<text x="1098.7" y="461" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D9</text>
+<text x="470" y="494" font-size="14" font-weight="700" fill="#222">スライダー 5</text>
+<rect x="530" y="502" width="440" height="64" rx="6" fill="#f1f3f4" stroke="#bdc1c6"/>
+<rect x="600" y="530.0" width="300" height="8" rx="4" fill="#dadce0"/>
+<rect x="740.0" y="512" width="20" height="44" rx="3" fill="#333"/>
+<circle cx="546" cy="512" r="5.5" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>
+<text x="557" y="517" text-anchor="start" font-size="14" font-weight="700" fill="#333">2</text>
+<circle cx="546" cy="526" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="531" text-anchor="start" font-size="14" font-weight="700" fill="#333">1</text>
+<circle cx="546" cy="540" r="5.5" fill="#fff" stroke="#9aa0a6" stroke-width="2.5"/>
+<text x="557" y="545" text-anchor="start" font-size="14" font-weight="700" fill="#333">L</text>
+<circle cx="546" cy="554" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<text x="557" y="559" text-anchor="start" font-size="14" font-weight="700" fill="#333">E</text>
+<line x1="540" y1="512" x2="464" y2="512" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="438.6" y="501" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="451.3" y="517" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A4</text>
+<line x1="540" y1="526" x2="490" y2="526" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="490" y1="526" x2="490" y2="554" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="540" y1="554" x2="490" y2="554" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<circle cx="490" cy="554" r="3.5" fill="#202124"/>
+<line x1="490" y1="554" x2="464" y2="554" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="430.4" y="543" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="447.2" y="559" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<circle cx="954" cy="526" r="5.5" fill="#fff" stroke="#d93025" stroke-width="2.5"/>
+<text x="943" y="531" text-anchor="end" font-size="14" font-weight="700" fill="#333">3</text>
+<circle cx="954" cy="554" r="5.5" fill="#fff" stroke="#e8710a" stroke-width="2.5"/>
+<text x="943" y="559" text-anchor="end" font-size="14" font-weight="700" fill="#333">B</text>
+<line x1="960" y1="526" x2="1040" y2="526" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1040.0" y="515" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="1052.7" y="531" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="960" y1="554" x2="1034" y2="554" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="1034" y1="554" x2="1042" y2="554" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1042" y="547" width="30" height="14" rx="2" fill="#fff" stroke="#e8710a" stroke-width="2"/>
+<line x1="1072" y1="554" x2="1080" y2="554" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="1086.0" y="543" width="33.6" height="22" rx="5" fill="#e8710a"/>
+<text x="1102.8" y="559" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D10</text>
+<text x="470" y="598" font-size="14" font-weight="700" fill="#222">回転ボリューム（ノブ）</text>
+<circle cx="620" cy="658" r="40" fill="#f1f3f4" stroke="#bdc1c6"/>
+<circle cx="620" cy="658" r="14" fill="#333"/>
+<line x1="592" y1="698" x2="592" y2="720" stroke="#777" stroke-width="3"/>
+<circle cx="592" cy="722" r="5.5" fill="#fff" stroke="#d93025" stroke-width="2.5"/>
+<line x1="620" y1="698" x2="620" y2="720" stroke="#777" stroke-width="3"/>
+<circle cx="620" cy="722" r="5.5" fill="#fff" stroke="#1a73e8" stroke-width="2.5"/>
+<line x1="648" y1="698" x2="648" y2="720" stroke="#777" stroke-width="3"/>
+<circle cx="648" cy="722" r="5.5" fill="#fff" stroke="#202124" stroke-width="2.5"/>
+<line x1="592" y1="728" x2="592" y2="742" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="577.0" y="743" width="25.4" height="22" rx="5" fill="#d93025"/>
+<text x="589.7" y="759" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5V</text>
+<line x1="620" y1="728" x2="620" y2="742" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="606.0" y="743" width="25.4" height="22" rx="5" fill="#1a73e8"/>
+<text x="618.7" y="759" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A5</text>
+<line x1="648" y1="728" x2="648" y2="742" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="642.0" y="743" width="33.6" height="22" rx="5" fill="#202124"/>
+<text x="658.8" y="759" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">GND</text>
+<text x="690" y="660" font-size="13" fill="#444">中央の端子を A5 へ。両端は 5V と GND</text>
+<text x="690" y="680" font-size="13" fill="#444">（左右を入れ替えると回す向きが逆になります）</text>
+<rect x="20" y="830" width="1160" height="48" rx="10" fill="#fafafa" stroke="#e0e0e0"/>
+<line x1="40" y1="854" x2="66" y2="854" stroke="#d93025" stroke-width="2.5" stroke-linecap="round"/>
+<text x="74" y="859" font-size="13" fill="#333">5V（電源）</text>
+<line x1="180" y1="854" x2="206" y2="854" stroke="#202124" stroke-width="2.5" stroke-linecap="round"/>
+<text x="214" y="859" font-size="13" fill="#333">GND</text>
+<line x1="278" y1="854" x2="304" y2="854" stroke="#1a73e8" stroke-width="2.5" stroke-linecap="round"/>
+<text x="312" y="859" font-size="13" fill="#333">ボリュームの信号</text>
+<line x1="446" y1="854" x2="472" y2="854" stroke="#e8710a" stroke-width="2.5" stroke-linecap="round"/>
+<text x="480" y="859" font-size="13" fill="#333">LED（抵抗を通す）</text>
+<line x1="642" y1="854" x2="650" y2="854" stroke="#e8710a" stroke-width="2.5"/>
+<rect x="650" y="847" width="30" height="14" rx="2" fill="#fff" stroke="#e8710a" stroke-width="2"/>
+<line x1="680" y1="854" x2="688" y2="854" stroke="#e8710a" stroke-width="2.5"/>
+<text x="696" y="859" font-size="13" fill="#333">抵抗 180Ω〜1kΩ（例 330Ω）</text>
+<circle cx="917" cy="854" r="5.5" fill="#fff" stroke="#9aa0a6" stroke-width="2.5"/>
+<text x="929" y="859" font-size="13" fill="#333">L はつながない</text>
+<text x="1090" y="80" text-anchor="end" font-size="12" fill="#666">スライダーの端子の並びは Bourns PTL60 のデータシートより。実物の端子も確認してください</text>
+</svg>
