@@ -25,7 +25,7 @@
 
 ### PC
 
-- Windows 10 / 11、または macOS 14.2 以降（Mac 版は試験中。[Mac 版について](#mac-版について試験中)）
+- Windows 10 / 11、または macOS 14.2 以降（Mac は [Mac 版について](#mac-版について) を参照）
 - Google Chrome 116 以降（タブの音量を操作する場合）
 
 ### 部品
@@ -82,7 +82,7 @@ D0 / D1 は USB シリアルに使うので空けておきます。
    - 署名していないため「Windows によって PC が保護されました」と出ることがあります。「詳細情報」→「実行」で起動できます
 3. タスクトレイのアイコンをクリックすると設定画面が開きます。「設定」→「コントローラー」でマイコンの COM ポートを選びます
 
-Mac の場合は [Mac 版について](#mac-版について試験中) を見てください。
+Mac の場合は [Mac 版について](#mac-版について) を見てください。
 
 ### 3. Chrome 拡張機能を入れる
 
@@ -219,7 +219,7 @@ start.bat
 - ケース：`case` フォルダで `pip install numpy trimesh manifold3d` を入れた venv を作り、`python case.py`。出力は `case/out/`
 - 仮スライダー：`tools/fake_sliders.bat` でコントローラーなしに試せます（config.yaml の `com_port` を `socket://127.0.0.1:9000` に）
 
-## Mac 版について（試験中）
+## Mac 版について
 
 ### 入れ方
 
