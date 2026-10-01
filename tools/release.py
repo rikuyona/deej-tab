@@ -1,17 +1,17 @@
 """GitHub の Releases に載せる zip を release/ に作る
 
-    app\\.venv\\Scripts\\python tools\\release.py          今ある deej-tab.exe と case/out の STL を使う
+    app\\.venv\\Scripts\\python tools\\release.py          今ある deej-tab.exe を使う
     app\\.venv\\Scripts\\python tools\\release.py --build  先に deej-tab.exe を作り直す
 
 できるもの (release/):
   deej-tab-<版>-windows.zip        deej-tab.exe
   deej-tab-extension-<版>.zip      Chrome 拡張機能 (展開して「パッケージ化されていない拡張機能を読み込む」)
   deej-tab-firmware-<版>.zip       Nano 用ファームウェア
-  deej-tab-case-stl.zip            ケース・ツマミの STL
+
+ケースの STL は MakerWorld で配布する (Releases には載せない)
 """
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -65,9 +65,6 @@ def main():
     exe = os.path.join(APP, "deej-tab.exe")
     if not os.path.exists(exe):
         sys.exit("app/deej-tab.exe がありません。--build を付けて実行してください")
-    stls = sorted(glob.glob(os.path.join(ROOT, "case", "out", "*.stl")))
-    if not stls:
-        sys.exit("case/out に STL がありません。case フォルダで case.py を実行してください")
 
     v, ev = app_version(), ext_version()
     os.makedirs(OUT, exist_ok=True)
@@ -75,8 +72,6 @@ def main():
     make_zip(f"deej-tab-{v}-windows.zip", [(exe, "deej-tab/deej-tab.exe")])
     make_zip(f"deej-tab-extension-{ev}.zip", tree(os.path.join(ROOT, "extension"), "deej-tab-extension"))
     make_zip(f"deej-tab-firmware-{v}.zip", tree(os.path.join(ROOT, "firmware"), "firmware"))
-    make_zip("deej-tab-case-stl.zip", [(p, os.path.join("case", os.path.basename(p))) for p in stls])
-
 
 if __name__ == "__main__":
     main()

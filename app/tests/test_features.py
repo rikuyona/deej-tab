@@ -666,6 +666,23 @@ class CalibrationTest(unittest.TestCase):
         self.cmd({"type": "calib_save"})
         self.assertEqual(self.c.calibration, {0: (100 + d.CAL_MARGIN, 900 - d.CAL_MARGIN), 1: (20, 990)})
 
+    def test_full_range_not_saved(self):
+        self.line(500)
+        self.cmd({"type": "calib_start"})
+        self.line(0)
+        self.line(1023)
+        res = json.loads(self.cmd({"type": "calib_save"}).sent[0])
+        self.assertEqual((res["saved"], res["full"]), ([], [0]))
+        self.assertEqual(self.c.calibration, {})
+        # 前に合わせていたスライダーが端まで届いたら、既定に戻す (保存した扱い)
+        self.c.save(slider_calibration={0: [20, 990]})
+        self.cmd({"type": "calib_start"})
+        self.line(0)
+        self.line(1023)
+        res = json.loads(self.cmd({"type": "calib_save"}).sent[0])
+        self.assertEqual((res["saved"], res["full"]), ([0], []))
+        self.assertEqual(self.c.calibration, {})
+
     def test_cancel_and_reset(self):
         self.c.save(slider_calibration={0: [20, 990], 1: [30, 980]})
         self.cmd({"type": "calib_start"})
@@ -693,6 +710,78 @@ class CalibrationTest(unittest.TestCase):
         self.assertIn("@C|3|12|1000", lines)
         self.assertIn("@C|0|0|1023", lines)
         self.assertEqual(self.app.led_sim.cal[3], (12, 1000))   # 分身も同じ範囲で光る
+
+
+class ControllerIdTest(unittest.TestCase):
+    """コントローラーの ID と、別の USB の口に差した時に探し直す"""
+
+    def setUp(self):
+        self.c = make_config(BASE.replace("socket://127.0.0.1:9", "COM5"))
+        self.app = d.DeejTab(self.c, FakeAudio, system=False)
+        self.app.broadcast = lambda m: None
+        self.ui = []
+        self.app.broadcast_ui = self.ui.append
+        self.saved = (d.usb_serial_ports, d.probe_port)
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        d.usb_serial_ports, d.probe_port = self.saved
+
+    def fake_ports(self, ports, answers):
+        """ports: USB のポート一覧、answers: {ポート: probe_port の返り値}"""
+        self.probed = []
+        d.usb_serial_ports = lambda: list(ports)
+
+        def probe(dev, baud, timeout=None):
+            self.probed.append(dev)
+            return answers.get(dev)
+        d.probe_port = probe
+
+    def test_id_line(self):
+        self.assertTrue(d.ID_RE.match("@ID|deej-6ch-led|1.3|0A1B2C3D"))
+        self.assertFalse(d.ID_RE.match("@ID|deej-6ch-led|1.3|0a1b2c3d"))
+        self.app.on_device_id("@ID|deej-6ch-led|1.3|0A1B2C3D")
+        self.assertEqual(self.app.device, {"id": "0A1B2C3D", "fw": "1.3", "name": "deej-6ch-led"})
+        self.assertEqual(self.c.device_id, "0A1B2C3D")
+        self.assertEqual(raw(self.c)["device_id"], "0A1B2C3D")
+        self.assertEqual(self.app.ui_status()["device"]["id"], "0A1B2C3D")
+
+    def test_finds_same_id_on_other_port(self):
+        self.c.save(device_id="0A1B2C3D")
+        other = {"id": "FFFF0000", "fw": "1.3", "name": "deej-6ch-led"}
+        mine = {"id": "0A1B2C3D", "fw": "1.3", "name": "deej-6ch-led"}
+        self.fake_ports(["COM6", "COM7", "COM8"], {"COM6": other, "COM7": {"id": None}, "COM8": mine})
+        self.assertTrue(self.app.search_controller(("COM5", 9600)))
+        self.assertEqual(self.c.com_port, "COM8")
+        self.assertEqual(self.probed, ["COM6", "COM7", "COM8"])
+        self.assertEqual(self.ui[0]["type"], "notice")
+
+    def test_without_id_takes_first_controller(self):
+        self.fake_ports(["COM6", "COM7"], {"COM7": {"id": None}})
+        self.assertTrue(self.app.search_controller(("COM5", 9600)))
+        self.assertEqual(self.c.com_port, "COM7")
+
+    def test_searches_only_when_ports_change(self):
+        self.c.save(device_id="0A1B2C3D")
+        self.fake_ports(["COM6"], {})
+        self.assertFalse(self.app.search_controller(("COM5", 9600)))
+        self.assertFalse(self.app.search_controller(("COM5", 9600)))   # 同じ顔ぶれならもう開かない
+        self.assertEqual(self.probed, ["COM6"])
+        self.fake_ports(["COM6", "COM9"], {"COM9": {"id": "0A1B2C3D", "fw": "1.3", "name": "x"}})
+        self.assertTrue(self.app.search_controller(("COM5", 9600)))
+        self.assertEqual(self.c.com_port, "COM9")
+
+    def test_no_search_when_port_present_or_fake(self):
+        self.fake_ports(["COM5", "COM6"], {"COM6": {"id": None}})
+        self.assertFalse(self.app.search_controller(("COM5", 9600)))   # ある (ほかのアプリが使っている)
+        self.assertFalse(self.app.search_controller(("socket://127.0.0.1:9000", 9600)))
+        self.assertEqual(self.probed, [])
+
+    def test_firmware_sends_id(self):
+        ino = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                                "firmware", "deej-6ch-led", "deej-6ch-led.ino"), encoding="utf-8").read()
+        self.assertIn('"@ID|%s|%s|%08lX"', ino)
+        self.assertTrue(d.ID_RE.match("@ID|deej-6ch-led|1.3|%08X" % 0x1D01))
 
 
 class LedCalibrationTest(unittest.TestCase):

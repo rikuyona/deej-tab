@@ -35,6 +35,8 @@ log = logging.getLogger("deej-tab")
 VERSION = "1.2.0"
 
 LINE_RE = re.compile(r"^\d{1,4}(\|\d{1,4})*$")
+# コントローラーの ID の行 (ファームウェア deej-6ch-led 1.3 以降): @ID|名前|版|8 桁の 16 進
+ID_RE = re.compile(r"^@ID\|([\w.-]{1,24})\|([\w.]{1,8})\|([0-9A-F]{8})$")
 NOISE_THRESHOLDS = {"none": 0.005, "low": 0.015, "default": 0.025, "high": 0.035}   # none は 1% ごと (位置は 1% 刻みなので 0.01 だと誤差で止まる)
 SPECIAL_TARGETS = {"master", "mic", "system", "deej.current", "deej.unmapped", "deej.game"}
 TAB_RE = re.compile(r"^tab\.([1-9]\d*)$")
@@ -66,6 +68,8 @@ SESSION_REFRESH_MIN = 5.0    # 秒。これより短い間隔ではセッショ�
 SESSION_REFRESH_MAX = 45.0   # 秒。これより古い一覧はスライダー操作時に取り直す
 CONFIG_POLL = 2.0            # 秒。config.yaml の更新確認間隔
 SERIAL_STALE = 5.0           # 秒。これだけ何も届かなければ繋ぎ直す (スリープ復帰後の固まり対策)
+ID_ASK_AFTER = 2.5           # 秒。つないでからこれだけ ID が来なければ @I で聞く (Nano は開くとリセットされ、起動時に送る)
+PROBE_TIME = 3.5             # 秒。コントローラーを探す時に 1 つのポートを読む時間
 TRAY_CHECK = 5.0             # 秒。トレイアイコンが消えていないかの確認間隔
 KEEPALIVE = 20.0             # 秒。拡張機能の Service Worker を維持するための ping 間隔
 UI_LEVEL_INTERVAL = 0.05     # 秒。設定画面へスライダー値を送る間隔
@@ -115,6 +119,8 @@ CONFIG_HEADER = """\
 #   max_volume: 150               いちばん上まで上げた時の音量 (%)。100 を超える分は Chrome タブ・OBS だけに効く
 #   unity_position: 50            スライダーのどこで 100% になるか (%)。書かなければ比例 (150% なら 67%)
 #   glide: 1.0                    音量がスライダーについてくるまでの時間 (秒)。書かなければ下の glide
+# device_id: つないだコントローラーの ID (ファームウェアが送る)。com_port が見つからない時、
+#   USB のポートを順に開いて同じ ID のコントローラーを探し、com_port を書き換える (別の USB の口に差した時)
 # slider_calibration: スライダーの端の位置 (設定画面の「端の位置を合わせる」で測る)。
 #   0: [12, 1008]  生の値 12 以下を 0%、1008 以上を 100% にする。書いていないスライダーは 0〜1023。
 #   プロファイルを切り替えても変わらない。Nano にも送り、LED も同じ範囲で動く
@@ -189,6 +195,7 @@ class Config:
         self.pickup = True
         self.glide_default = 0.0
         self.calibration = {}      # {slider_idx: (下端, 上端)} 生の値 (合わせたスライダーだけ)
+        self.device_id = ""        # 最後につないだコントローラーの ID (8 桁の 16 進。分からなければ "")
         self.hotkeys = {"pause": ""}
         self.led_mode = "status"
         self.led_params = {}       # 光り方の数値のうち、既定から変えたもの (leds.PARAMS の名前)
@@ -217,6 +224,8 @@ class Config:
         self.restore_on_pause = bool(raw.get("restore_on_pause", True))
         self.pickup = bool(raw.get("pickup", True))
         self.glide_default = parse_glide(raw.get("glide", 0.0))
+        dev = str(raw.get("device_id") or "").upper()
+        self.device_id = dev if re.fullmatch(r"[0-9A-F]{8}", dev) else ""
         cal = raw.get("slider_calibration")
         self.calibration = leds.normalize_calibration(cal if isinstance(cal, dict) else {})
         hk = raw.get("hotkeys") if isinstance(raw.get("hotkeys"), dict) else {}
@@ -674,6 +683,54 @@ def list_com_ports():
     return [{"device": p.device, "description": p.description} for p in list_ports.comports()]
 
 
+def usb_serial_ports():
+    """USB のシリアルポートだけ (Bluetooth のポートは開くと相手につなぎに行って待たされるので除く)"""
+    from serial.tools import list_ports
+    return sorted(p.device for p in list_ports.comports() if "VID:PID=" in (p.hwid or ""))
+
+
+def probe_port(device, baud, timeout=PROBE_TIME):
+    """ポートを開いて少し読む。ID が来れば {"id", "fw", "name"}、スライダーの値だけなら {"id": None}、
+    どちらもなければ (ほかの機器・開けない) None"""
+    try:
+        port = serial.Serial(device, baudrate=baud, timeout=0.1, write_timeout=0.5)
+    except Exception:
+        return None
+    values, asked = False, False
+    start = time.monotonic()
+    try:
+        while time.monotonic() - start < timeout:
+            line = port.readline().decode("ascii", "ignore").strip()
+            m = ID_RE.match(line)
+            if m:
+                return {"id": m.group(3), "fw": m.group(2), "name": m.group(1)}
+            if LINE_RE.match(line) and line.count("|") == CHANNELS - 1:
+                values = True
+            if not asked and time.monotonic() - start > ID_ASK_AFTER:
+                asked = True
+                try:
+                    port.write(b"@I\n")
+                except Exception:
+                    pass
+    except Exception:
+        return None
+    finally:
+        port.close()
+    return {"id": None} if values else None
+
+
+def find_controller(device_id, baud, ports):
+    """ports の中からコントローラーを探す。device_id が分かっていれば同じ ID のものだけ、
+    分からなければ (ID を送らない古いファームウェア) スライダーの値を送ってくる最初のもの。(ポート, 情報) か None"""
+    for dev in ports:
+        info = probe_port(dev, baud)
+        if info is None:
+            continue
+        if info["id"] == device_id if device_id else True:
+            return dev, info
+    return None
+
+
 class DummyAudio:
     """Windows 以外・テスト用。実際には何もせず記録だけする。音量は current に持つ"""
 
@@ -776,6 +833,8 @@ class DeejTab:
         self.game_name = None        # deej.game: 最後に全画面だったアプリ
         self.auto = {"profile": None, "exe": None, "pid": 0, "base": None, "suppressed": None}
         self.serial_state = {"connected": False, "port": config.com_port, "error": ""}
+        self.device = None           # 今つないでいるコントローラーの {"id", "fw", "name"} (ID を送らなければ None)
+        self._searched_ports = None  # 最後にコントローラーを探した時の USB ポートの一覧 (変わった時だけ探し直す)
         self._sent_enabled = config.enabled
         self._sent_meter = None
         self._last_lists = None
@@ -795,6 +854,8 @@ class DeejTab:
         next_config_check = 0.0
         last_data = 0.0
         stale = False                # 無通信で繋ぎ直している最中 (ログを繰り返さない)
+        last_open = 0.0
+        id_asked = False
         self._led_state = self.new_led_state()
         while not self.stop.is_set():
             now = time.monotonic()
@@ -814,9 +875,12 @@ class DeejTab:
                 try:
                     port = serial.serial_for_url(wanted[0], baudrate=wanted[1], timeout=0.1, write_timeout=0.5)
                     opened_with = wanted
-                    last_data = time.monotonic()
+                    last_data = last_open = time.monotonic()
                     self.values = []
                     self._led_state.update(sent=None, broken=False, params_sent=None, cal_sent=None)
+                    self.device = None
+                    self._searched_ports = None   # また消えたら探し直せるように
+                    id_asked = False
                     with self.led_lock:
                         self.led_sim.boot(led_now())   # Nano は接続するとリセットされ、起動アニメから始まる
                     if not stale:
@@ -828,6 +892,8 @@ class DeejTab:
                         log.warning("シリアルに接続できません (%s): %s。2秒ごとに再試行", wanted[0], e)
                     self.serial_state = {"connected": False, "port": wanted[0], "error": err}
                     self.levels = []
+                    if self.search_controller(wanted):
+                        continue
                     self.stop.wait(2)
                     continue
             try:
@@ -848,7 +914,11 @@ class DeejTab:
                     stale = False
                     self.serial_state = {"connected": True, "port": wanted[0], "error": ""}
                     log.info("シリアルの受信が戻りました: %s", wanted[0])
-                self.handle_line(raw.decode("ascii", "ignore").strip(), audio)
+                line = raw.decode("ascii", "ignore").strip()
+                if line.startswith("@ID|"):
+                    self.on_device_id(line)
+                else:
+                    self.handle_line(line, audio)
             elif time.monotonic() - last_data > SERIAL_STALE:
                 # スリープ復帰後などに、開いたまま何も届かなくなることがあるので開き直す
                 if not stale:
@@ -862,6 +932,13 @@ class DeejTab:
                     pass
                 port = None
                 continue
+            if self.device is None and not id_asked and time.monotonic() - last_open > ID_ASK_AFTER:
+                # 起動時の ID を取りこぼした (開いてもリセットされない時など) ので聞く。古いファームウェアは無視する
+                id_asked = True
+                try:
+                    port.write(b"@I\n")
+                except Exception:
+                    pass
             self.glide_tick(audio)
             if not self._led_state["broken"]:
                 try:
@@ -874,6 +951,50 @@ class DeejTab:
             self._restore(audio)
         if port is not None:
             port.close()
+
+    def on_device_id(self, line):
+        """コントローラーから ID が届いた。初めての ID なら覚える (別の USB の口に差した時に探すため)"""
+        m = ID_RE.match(line)
+        if not m:
+            return
+        info = {"id": m.group(3), "fw": m.group(2), "name": m.group(1)}
+        if info != self.device:
+            log.info("コントローラー: %s %s (ID %s)", info["name"], info["fw"], info["id"])
+        self.device = info
+        if self.config.device_id != info["id"]:
+            if self.config.device_id:
+                log.info("別のコントローラーにつながりました (前の ID %s)", self.config.device_id)
+            with self.config_lock:
+                self.config.save(device_id=info["id"])
+            self.after_config_change()
+
+    def search_controller(self, wanted):
+        """com_port が消えた時、ほかの USB のポートからコントローラーを探して com_port を書き換える。
+        USB のポートの顔ぶれが変わった時だけ探す (ほかの Arduino などを何度も開いてリセットしないように)。見つけたら True"""
+        name, baud = wanted
+        if "://" in name:
+            return False   # 仮スライダー
+        try:
+            ports = usb_serial_ports()
+        except Exception:
+            return False
+        if name in ports or ports == self._searched_ports:
+            return False   # ポートはある (ほかのアプリが使っている) か、前に探した時と同じ
+        self._searched_ports = ports
+        if not ports:
+            return False
+        log.info("%s が見つからないので、コントローラーを探します: %s", name, ", ".join(ports))
+        found = find_controller(self.config.device_id, baud, ports)
+        if not found:
+            log.info("コントローラーは見つかりませんでした")
+            return False
+        dev, info = found
+        with self.config_lock:
+            self.config.save(com_port=dev)
+        log.info("コントローラーが %s に移ったので、つなぎ直します", dev)
+        self.broadcast_ui({"type": "notice", "message": f"コントローラーが {dev} に移ったので、つなぎ直しました"})
+        self.after_config_change()
+        return True
 
     def _restore(self, audio):
         try:
@@ -1259,12 +1380,13 @@ class DeejTab:
     def save_calibration(self):
         """測った範囲から端の位置を決めて保存し、測るのを終える。
         十分に動かしたスライダーだけ変える (動かしていないスライダーは前のまま)。
-        返り値: {"saved": [番号...], "skipped": [番号...]}"""
+        端まで届いていて合わせる必要がないスライダーは full (前に合わせていれば既定に戻すので saved)。
+        返り値: {"saved": [番号...], "full": [番号...], "skipped": [番号...]}"""
         cal = self.calib
         if cal is None:
             raise ValueError("端の位置を測っていません")
         result = dict(self.config.calibration)
-        saved, skipped = [], []
+        saved, full, skipped = [], [], []
         for i, (mn, mx) in enumerate(zip(cal["min"], cal["max"])):
             if mx - mn < leds.CAL_MIN_SPAN:
                 skipped.append(i)
@@ -1273,6 +1395,9 @@ class DeejTab:
             hi = 1023 if mx >= 1023 - CAL_MARGIN else mx - CAL_MARGIN
             if not leds.valid_calibration(lo, hi):
                 skipped.append(i)
+                continue
+            if (lo, hi) == leds.CAL_DEFAULT and i not in result:
+                full.append(i)
                 continue
             result[i] = (lo, hi)
             saved.append(i)
@@ -1284,7 +1409,9 @@ class DeejTab:
         self.end_calibration()
         if saved:
             self.after_config_change()
-        return {"saved": saved, "skipped": skipped}
+        if full:
+            log.info("端まで届いているので合わせなかったスライダー: %s", ", ".join(str(i + 1) for i in full))
+        return {"saved": saved, "full": full, "skipped": skipped}
 
     def save_sliders(self, sliders, **options):
         with self.config_lock:
@@ -1461,7 +1588,7 @@ class DeejTab:
 
     def ui_status(self):
         return {
-            "type": "status", "serial": self.serial_state, "extension": len(self.clients),
+            "type": "status", "serial": self.serial_state, "device": self.device, "extension": len(self.clients),
             "obs": self.obs.status(), "game": self.game_name, "auto_profile": self.auto["profile"],
             "hotkey_errors": dict(self.hotkeys.errors) if self.hotkeys else {},
         }

@@ -1,6 +1,8 @@
 // deej-6ch-led: スライダー 5 本 (LED 付き) + ノブ 1 つの deej 互換ファームウェア
 //
 // 送信 (Nano → PC): 公式 deej と同じ "v0|v1|v2|v3|v4|v5\n" (0〜1023)
+//   起動した時と @I を受け取った時だけ "@ID|deej-6ch-led|1.3|A1B2C3D4" (このコントローラーの ID。公式 deej は読み飛ばす)。
+//   CH340 には USB のシリアル番号がなく、別の USB の口に差すと COM 番号が変わるので、deej-tab はこの ID で探し直す
 // 受信 (PC → Nano): LED の指示 (deej-tab 1.2 以降。app/leds.py と同じ取り決め)
 //   @L|g|m0|m1|m2|m3|m4   g = 0 普通 / 1 一時停止
 //                         m = N 普通 / O 消灯 / D 暗く / B 明滅 (100% 超え) / P 点滅 (ピックアップ待ち)
@@ -8,6 +10,7 @@
 //   @P|DIM=20|BRIGHT=255… 光り方の数値 (下の既定値と同じ名前。FADE_UP / FADE_DOWN は %)。
 //                         変わったら 2 秒後に EEPROM に保存し、次に電源を入れた時もその光り方で動く
 //   @B                    起動アニメをもう一度流す
+//   @I                    ID をもう一度送る
 //   @C|i|lo|hi            スライダー i (0〜5) の端の位置。生の値 lo を 0、hi を 1023 とみなす (deej-tab の「端の位置を合わせる」)。
 //                         EEPROM に保存し、LED の判断 (0 で消灯・位置で明るさ) に使う。PC に送る値は生のまま
 // PC から 3 秒何も来なければ、PC なしの光り方 (操作したら明るく約 2 秒、0 で消灯、5 分で減光) に戻る。
@@ -16,6 +19,9 @@
 // 配線: スライダー A0〜A4 (LED は D3 / D5 / D6 / D9 / D10、330Ω)、ノブ A5。D0 / D1 は USB シリアル
 
 #include <EEPROM.h>
+
+const char FW_NAME[] = "deej-6ch-led";
+const char FW_VERSION[] = "1.3";
 
 const int NUM_SLIDERS = 6;
 const int NUM_LEDS = 5;
@@ -74,6 +80,11 @@ const unsigned int CAL_MAGIC = 0xCA01;
 const int CAL_LO_MAX = 400, CAL_HI_MIN = 623, CAL_MIN_SPAN = 300;
 int calLo[NUM_SLIDERS] = {0, 0, 0, 0, 0, 0};
 int calHi[NUM_SLIDERS] = {1023, 1023, 1023, 1023, 1023, 1023};
+
+// このコントローラーの ID。初めて起動した時に作って EEPROM に保存する (書き込み直しても消えない)
+const int ID_ADDR = 240;
+const unsigned int ID_MAGIC = 0x1D01;
+unsigned long deviceId = 0;
 
 const unsigned long PC_TIMEOUT_MS = 3000;
 const unsigned long METER_TIMEOUT_MS = 300;
@@ -267,6 +278,34 @@ void saveCalibration() {
   }
 }
 
+// ID を読む。まだなければ作る (アナログ入力の揺れと時間を混ぜる。暗号用ではなく、手持ちのコントローラーどうしが重ならなければよい)
+void loadOrMakeId() {
+  unsigned int magic;
+  EEPROM.get(ID_ADDR, magic);
+  if (magic == ID_MAGIC) {
+    EEPROM.get(ID_ADDR + 2, deviceId);
+    if (deviceId != 0 && deviceId != 0xFFFFFFFFUL) return;
+  }
+  unsigned long h = 2166136261UL;
+  for (int k = 0; k < 64; k++) {
+    for (int i = 0; i < NUM_SLIDERS; i++) {
+      h = (h ^ (unsigned long)analogRead(analogInputs[i])) * 16777619UL;
+    }
+    h = (h ^ micros()) * 16777619UL;
+    delayMicroseconds((h & 0x3F) + 10);
+  }
+  if (h == 0 || h == 0xFFFFFFFFUL) h = 0x13579BDFUL;
+  deviceId = h;
+  EEPROM.put(ID_ADDR + 2, deviceId);
+  EEPROM.put(ID_ADDR, ID_MAGIC);
+}
+
+void sendId() {
+  char buf[48];
+  snprintf(buf, sizeof(buf), "@ID|%s|%s|%08lX", FW_NAME, FW_VERSION, deviceId);
+  Serial.println(buf);
+}
+
 // "2|12|1008" (番号|下端|上端) を読む。範囲外は捨てる
 void handleCalibration(char *s) {
   char *p1 = strchr(s, '|');
@@ -315,6 +354,10 @@ void handleLine(char *line) {
   if (line[0] != '@') return;
   if (line[1] == 'B' && line[2] == 0) {
     bootStart = millis();
+    return;
+  }
+  if (line[1] == 'I' && line[2] == 0) {
+    sendId();
     return;
   }
   if (line[1] == 'P' && line[2] == '|') {
@@ -446,6 +489,8 @@ void setup() {
     shown[i] = DIM;
   }
   Serial.begin(9600);
+  loadOrMakeId();
+  sendId();
   for (int i = 0; i < NUM_SLIDERS; i++) {
     analogValues[i] = readAveraged(analogInputs[i]);
     lastTouchValue[i] = analogValues[i];

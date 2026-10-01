@@ -428,7 +428,7 @@
   <h2>コントローラー</h2>
   <div class="settings">
     <div class="row">
-      <div class="t">接続先<small>コントローラーをつないだ USB の COM ポート</small></div>
+      <div class="t">接続先<small id="port-note">コントローラーをつないだ USB の COM ポート</small></div>
       <div class="port">
         <select id="port-select" aria-label="接続先"></select>
         <input class="text" id="port-custom" placeholder="例: COM5" hidden>
@@ -1070,7 +1070,10 @@ function renderCalibration() {
     if (has) now.style.left = pct(raw);
     any = any || (has && j.ok);
     const st = row.querySelector('.cal-st');
-    const html = has && j.ok
+    const full = j.ok && j.lo === 0 && j.hi === 1023;
+    const html = has && full
+      ? '<b class="ok">端まで届いています</b>合わせなくても大丈夫です'
+      : has && j.ok
       ? `<b class="ok">測れました</b>${j.lo} 〜 ${j.hi}`
       : `<b>${has ? j.text : '—'}</b>${saved
         ? `今: ${slo} 〜 ${shi} <button class="link" data-reset="${i}">元に戻す</button>`
@@ -1421,6 +1424,10 @@ function renderStatus() {
   const portName = s?.port === FAKE_PORT ? '仮スライダー' : (s?.port || '');
   document.getElementById('serial-text').textContent = s?.connected ? portName + ' 接続中' : portName + ' 未接続';
   ps.title = s?.error || '';
+  const dev = state.status.device;
+  document.getElementById('port-note').textContent = dev
+    ? `コントローラーをつないだ USB の COM ポート。ID ${dev.id}（ファームウェア ${dev.fw}）。別の USB の口に差しても、自動で探してつなぎ直します`
+    : 'コントローラーをつないだ USB の COM ポート';
   const pe = document.getElementById('pill-ext');
   pe.className = 'pill ' + (state.extension > 0 ? 'on' : 'off');
   document.getElementById('ext-text').textContent = state.extension > 0 ? '接続中' : '未接続';
@@ -1600,12 +1607,18 @@ function connect() {
       if (!gotLists) { gotLists = true; requestAnimationFrame(fitWindow); }
     } else if (m.type === 'calib_result') {
       const names = (list) => list.map((i) => NAMES[i] || `スライダー ${i + 1}`).join('、');
+      const full = m.full || [];
       if (m.saved.length) {
         quietSave = true;
-        toast(`${names(m.saved)} の端の位置を保存しました`);
+        toast(`${names(m.saved)} の端の位置を保存しました${full.length ? `（${names(full)} は端まで届いているので、そのままです）` : ''}`);
+      } else if (full.length) {
+        toast(`${names(full)} は端まで届いているので、合わせる必要はありません`);
       } else {
         toast('端まで動かしたスライダーがないので、保存しませんでした', true);
       }
+    } else if (m.type === 'notice') {
+      quietSave = true;   // 続けて届く設定の「保存しました」で消さない
+      toast(m.message);
     } else if (m.type === 'error') {
       toast(m.message, true);
     }
