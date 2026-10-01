@@ -425,7 +425,18 @@
 
   <section id="view-settings" role="tabpanel" hidden>
 
-  <h2>コントローラー</h2>
+  <h2>言語</h2>
+  <div class="settings">
+    <div class="row">
+      <div class="t">言語 / Language<small>Windows の表示言語に合わせるか、選んだ言語で表示します</small></div>
+      <div class="seg" role="radiogroup" aria-label="言語" id="language">
+        <button role="radio" data-v="auto">自動</button>
+        <button role="radio" data-v="ja">日本語</button>
+        <button role="radio" data-v="en">English</button>
+      </div>
+    </div>
+  </div>
+  <h2 style="margin-top:32px">コントローラー</h2>
   <div class="settings">
     <div class="row">
       <div class="t">接続先<small id="port-note">コントローラーをつないだ USB の COM ポート</small></div>
@@ -558,6 +569,270 @@
 <div class="offline" id="offline"><div><b>deej-tab に接続できません</b><p>アプリが終了している可能性があります。再接続を試みています…</p></div></div>
 
 <script>
+// ---------------------------------------------------------------- 言語 (日本語 / English)
+// 画面は日本語で書き、英語のときは表示中の文字 (テキスト・placeholder・title・aria-label) をこの表で置き換える。
+// 表にない文言は日本語のまま出る (壊れない)。文言を足したらここにも英語を足す。キーは空白を 1 つにまとめた日本語
+const I18N_EN = {
+  // 上の帯・ページ
+  'ミキサー': 'Mixer', '設定': 'Settings', 'スライダー操作': 'Sliders', '有効': 'On', '一時停止中': 'Paused',
+  'コントローラー': 'Controller', '確認中': 'Checking', 'Chrome 拡張': 'Chrome extension', 'ページ': 'Pages',
+  '確認が必要な設定があります': 'Some settings need attention',
+  'オフにすると、スライダーを動かしても音量は変わりません（タスクトレイのメニューからも切り替えられます）':
+    "Turn off to stop the sliders from changing the volume (also in the tray menu)",
+  'スライダー操作を有効にする': 'Enable sliders',
+  '一時停止中です。スライダーを動かしても音量は変わりません（Chrome のタブは元の音量に戻っています）。':
+    "Paused. Moving the sliders doesn't change the volume (Chrome tabs are back to their original volume).",
+  'deej-tab に接続できません': "Can't connect to deej-tab",
+  'アプリが終了している可能性があります。再接続を試みています…': 'The app may have quit. Trying to reconnect…',
+  '保存しました': 'Saved', '仮スライダー': 'Virtual sliders', '接続中': 'Connected', '未接続': 'Not connected',
+  // ミキサー
+  '割り当て': 'Assignments', 'ノブ': 'Knob', '＋ 割り当てを追加': '+ Add assignment',
+  'コントローラーの LED': 'LED on the controller', 'このスライダーの設定（向き・音量の上限など）': 'Settings for this slider (direction, max volume, …)',
+  '反転': 'Inverted', 'ここまで動かすと効きます': 'Move here to take effect',
+  'プロファイル': 'Profile', 'このプロファイルの設定': 'Profile settings', 'このプロファイルに切り替える': 'Switch to this profile',
+  '自動': 'Auto', '＋ 追加': '+ Add', '標準': 'Standard',
+  // 割り当て先
+  '全体音量': 'Master volume', 'Windows のマスター音量': 'Windows master volume', 'システム音': 'System sounds',
+  '通知音など': 'Notifications and more', 'マイク': 'Microphone', 'マイクの入力音量': 'Microphone input level',
+  '今使っているアプリ': 'Current app', 'いちばん手前のウィンドウのアプリ。Chrome なら表示中のタブ': 'The app in the front window. For Chrome, the visible tab',
+  'そのほかのアプリ': 'Other apps', 'どのスライダーにも割り当てていないアプリ全部': 'All apps not assigned to any slider',
+  'ゲーム（全画面のアプリ）': 'Game (fullscreen app)',
+  '最後に全画面で使ったアプリ。ほかのウィンドウに切り替えても、終了するまで追いかけます':
+    'The last app used in fullscreen. Keeps following it until it quits, even if you switch windows',
+  'まだ全画面のアプリはありません': 'No fullscreen app yet', 'OBS の音声ソース': 'OBS audio sources',
+  'Chrome 拡張で選んだタブ': 'Tab chosen in the Chrome extension',
+  '基本': 'Basic', '自動で切り替わる': 'Automatic', 'Chrome タブ': 'Chrome tabs', '音を出しているアプリ': 'Playing audio',
+  '起動中のアプリ': 'Running apps', '最近使ったアプリ': 'Recent apps', 'インストール済みのアプリ': 'Installed apps',
+  '検索 (例: discord、spotify)': 'Search (e.g. discord, spotify)', '割り当て先を検索': 'Search targets',
+  '一覧にないアプリを exe ファイルから選ぶ…': "Choose an app's exe file…", '♪ 再生中': '♪ Playing',
+  'アプリ名で追加': 'Add by app name', '今は起動していなくても割り当てられます': "Can be assigned even if it isn't running",
+  '候補がありません': 'No matches',
+  // スライダーごとの設定
+  '向きを反転': 'Invert', '上げると音が小さくなるときはオン': 'Turn on if raising it lowers the volume',
+  '「すべてのスライダーの向きを反転」がオンです。ここをオフにすると、このスライダーだけ元の向きになります':
+    '"Invert all sliders" is on. Turn this off to restore this slider\'s direction',
+  '音量の変わり方': 'Volume smoothing', '全体の設定': 'Global setting', 'いちばん上まで上げたときの音量': 'Volume at the top',
+  '音量の上限': 'Maximum volume',
+  '100% を超える分は、Chrome のタブ（「タブの音をまとめて調整」の方式）と OBS にだけ効きます。アプリ・全体音量・マイクは 100% で止まります。':
+    'Volume above 100% only applies to Chrome tabs (with "Adjust the tab\'s audio") and OBS. Apps, master volume and microphone stop at 100%.',
+  '（自動）': '(auto)', '100% になる位置': '100% position', '自動に戻す': 'Back to auto',
+  // 設定ページ
+  '接続先': 'Port', 'コントローラーをつないだ USB の COM ポート': 'The USB COM port the controller is connected to', '適用': 'Apply',
+  '例: COM5': 'e.g. COM5', '仮スライダー（テスト用）': 'Virtual sliders (for testing)', '手入力…': 'Enter manually…',
+  'すべてのスライダーの向きを反転': 'Invert all sliders',
+  '上げると音が小さくなるときはオン。1 本ずつ変えるときは各スライダーの ⚙ から': 'Turn on if raising a slider lowers the volume. To change one slider, use its ⚙',
+  'スライダーの端の位置を合わせる': 'Calibrate slider ends',
+  'いちばん下・いちばん上まで動かしても 0% / 100% にならないときに。合わせた範囲はコントローラーにも保存され、LED も同じ範囲で動きます':
+    "Use this if a slider doesn't reach 0% / 100% at its ends. The range is also saved to the controller and used for the LEDs",
+  '元に戻す': 'Reset', '合わせる': 'Calibrate', '揺れの抑え': 'Noise reduction',
+  '触っていないのに音量が小刻みに変わるときは強くします。強いほど、ゆっくり動かしたときに音量が飛び飛びに変わります':
+    "Raise this if the volume flickers while you aren't touching the sliders. Higher values make slow moves change in bigger steps",
+  'なし': 'None', '弱': 'Low', '強': 'High', 'LED で知らせること': 'LED feedback',
+  '割り当て先がない・100% を超えている・一時停止中などを、スライダーの LED の光り方で知らせます（専用のファームウェア deej-6ch-led が必要）':
+    'Shows things like no target, over 100% or paused on the slider LEDs (requires the deej-6ch-led firmware)',
+  '状態': 'Status', '状態と音の大きさ': 'Status and level', 'Windows の起動時に自動で起動': 'Start with Windows',
+  'タスクトレイに常駐します': 'Runs in the system tray',
+  '言語': 'Language', '言語 / Language': 'Language', '日本語': '日本語', 'Windows の表示言語に合わせるか、選んだ言語で表示します': 'Follow the Windows display language, or choose one',
+  'LED の光り方': 'LED effects', 'プレビュー': 'Preview', 'コントローラーの LED と同じ光り方です': 'Same as the LEDs on the controller',
+  '起動アニメを再生': 'Play startup animation', '操作していないとき': 'When idle', '明るさや速さは、光り方ごとに覚えます': 'Brightness and speed are remembered per effect',
+  '起動したとき': 'On startup', 'コントローラーをつないだとき。速さは光り方ごとに覚えます': 'When the controller is connected. Speed is remembered per effect',
+  '操作したとき': 'When moved', 'スライダーを動かしたとき。明るさや時間は、光り方ごとに覚えます': 'When you move a slider. Brightness and duration are remembered per effect',
+  '詳しい設定（状態を知らせるときの光り方など）': 'Advanced (status indications and more)', '初期設定に戻す': 'Reset to defaults',
+  '変えた設定はコントローラーにも保存され、PC から外しても同じ光り方になります': 'Changes are saved to the controller, so the LEDs work the same way without the PC',
+  '操作していないときの光り方': 'Idle effect', '起動したときの光り方': 'Startup effect', '操作したときの光り方': 'Touch effect',
+  '動作': 'Behavior', 'スライダーを速く動かしたとき、音量がどのくらいかけて追いつくか。1 本ずつ変えるときは各スライダーの ⚙ から':
+    'How long the volume takes to catch up when you move a slider quickly. To change one slider, use its ⚙',
+  'すぐ': 'Instant', 'なめらか': 'Smooth', 'ゆっくり': 'Slow', 'とてもゆっくり': 'Very slow',
+  '一時停止・終了したら音量を元に戻す': 'Restore volumes when paused or closed',
+  'Windows・OBS の音量を、deej-tab が変える前に戻します（Chrome のタブはいつも元に戻ります）':
+    'Restores Windows and OBS volumes to what they were before deej-tab changed them (Chrome tabs are always restored)',
+  'プロファイルを切り替えても音量を飛ばさない': "Don't jump volumes when switching profiles",
+  '切り替えたあと、スライダーが今の音量の位置（緑の点線）を通るまで音量を変えません':
+    'After switching, a slider takes effect only once it passes the current volume (green dotted line)',
+  '一時停止のショートカット': 'Pause shortcut', 'どのアプリを使っていても効きます。Backspace で解除': 'Works in any app. Backspace to clear',
+  'クリックしてキーを押す': 'Click, then press keys', 'キーを押してください': 'Press keys',
+  'OBS 連携': 'OBS integration', 'OBS の音声ソースをスライダーで操作': 'Control OBS audio sources with sliders',
+  'OBS の [ツール] → [WebSocket サーバー設定] で「WebSocket サーバーを有効にする」をオンにしてください。割り当ての追加に「OBS の音声ソース」が出ます':
+    'In OBS, turn on Tools → WebSocket Server Settings → "Enable WebSocket server". "OBS audio sources" then appear when adding assignments',
+  'ポート・パスワード': 'Port and password', 'ポート': 'Port', 'パスワード': 'Password',
+  'OBS の WebSocket サーバー設定と同じもの。パスワードは config.yaml にそのまま保存されます':
+    "Same as OBS's WebSocket server settings. The password is stored as plain text in config.yaml",
+  '保存して接続': 'Save and connect', '設定済み（変えるときだけ入力）': 'Saved (enter only to change)',
+  // 端の位置合わせ
+  'それぞれのスライダーを、いちばん下といちばん上まで動かしてください（ノブは左右いっぱいまで回します）。 測っている間は音量は変わりません。動かさなかったスライダーは今のままです。':
+    "Move each slider all the way down and all the way up (turn the knob fully both ways). The volume doesn't change while measuring. Sliders you don't move are left as they are.",
+  'コントローラーがつながっていません。': 'The controller is not connected.', 'やめる': 'Cancel', '保存': 'Save',
+  '動かしてください': 'Move it', 'もっと下まで': 'Further down', 'もっと上まで': 'Further up', 'もっと大きく動かしてください': 'Move it further',
+  '端まで届いています': 'Reaches the ends', '合わせなくても大丈夫です': 'No calibration needed', '測れました': 'Measured',
+  '今: 合わせていません': 'Current: not calibrated', 'すべてのスライダーの端の位置を、合わせる前に戻しますか？': 'Reset the calibration of all sliders?',
+  '端まで動かしたスライダーがないので、保存しませんでした': 'No slider was moved to its ends, so nothing was saved',
+  // LED の光り方の名前と数値
+  '点灯したまま': 'Steady', '呼吸': 'Breathing', '流れる波': 'Wave', '波': 'Wave', 'きらめき': 'Twinkle', '鼓動': 'Heartbeat',
+  '往復する光': 'Scanner', '光の点': 'Light dot', 'アニメ': 'Animation', 'スライダーの位置に合わせる': 'Follow slider position',
+  '左から右へ流れる': 'Left to right', '中央から広がる': 'From the center', '全体がふわっと点く': 'Fade in', '左右に往復する': 'Back and forth',
+  '明るく光る': 'Brighten', '波紋（端まで広がる）': 'Ripple',
+  '操作していないときの明るさ': 'Idle brightness',
+  'スライダーを上げるほど明るくなり、いちばん上でこの明るさと下の数値の合計になります': 'Brighter as the slider goes up; at the top it is this plus the value below',
+  'いちばん上にしたときに足す明るさ': 'Extra brightness at the top',
+  'いちばん明るいときに、操作していないときの明るさに足す分': 'Added to the idle brightness at the peak',
+  '呼吸の速さ': 'Breathing speed', '波の速さ': 'Wave speed', 'きらめきが切り替わる速さ': 'Twinkle speed', '鼓動の速さ': 'Heartbeat speed',
+  '光の点が往復する速さ': 'Scanner speed', 'アニメの速さ': 'Animation speed', '1 回の長さ。短いほど速く動きます': 'Length of one cycle. Shorter is faster',
+  'きらめく割合': 'Twinkle amount', '大きいほど、たくさんの LED が同時にきらめきます': 'Higher makes more LEDs twinkle at once',
+  'いちばん上にしたときの明るさ': 'Brightness at the top', '操作したときの明るさ': 'Touch brightness',
+  '動かした LED の明るさ。まわりはここから少しずつ暗くなります': 'Brightness of the moved LED. Its neighbors get gradually dimmer',
+  '手を離してから明るいままの時間': 'Stays bright for', '波紋の広がり': 'Ripple spread',
+  '隣に行くごとに残る明るさ。大きいほど遠くまで明るくなります': 'Brightness kept per neighbor. Higher spreads further',
+  '起動アニメの長さ': 'Startup animation length', '起動アニメの速さ': 'Startup animation speed', '短いほど早く終わります': 'Shorter finishes sooner',
+  '1 こまの長さ。短いほど速く流れます': 'Length of one step. Shorter is faster', '明るくなる速さ': 'Fade-in speed',
+  '大きいほど、ぱっと明るくなります': 'Higher brightens more quickly', '暗くなる速さ': 'Fade-out speed', '小さいほど、ゆっくり暗くなります': 'Lower fades more slowly',
+  '割り当て先がないときの明るさ': 'Brightness with no target', 'アプリが起動していないときなど': "e.g. when the app isn't running",
+  '割り当て先がないときに操作した明るさ': 'Touch brightness with no target', '100% を超えているときの点滅の速さ': 'Blink speed above 100%',
+  '1 回の長さ': 'Length of one cycle', '100% を超えているときの点滅の暗い側': 'Blink low level above 100%',
+  '音量を飛ばさないよう待っているときの点滅の速さ': 'Blink speed while waiting for pickup',
+  'プロファイルを切り替えた直後。点いている・消えている、それぞれの長さ': 'Right after switching profiles. Length of each on and off phase',
+  '音量を飛ばさないよう待っているときの明るさ': 'Brightness while waiting for pickup', '一時停止中の点滅の速さ': 'Blink speed while paused',
+  '暗くなるまでの時間': 'Dim after', 'どのスライダーも操作しないでいると、この時間で暗くなります': 'Dims after this long without touching any slider',
+  '暗くなったときの明るさ': 'Dimmed brightness', '初期設定のまま': 'Default',
+  'コントローラーがつながっていないので、PC とつないでいないときの光り方で見せています': "The controller isn't connected, so this shows how it lights without a PC",
+  'コントローラーの LED と同じ光り方です。スライダーを動かすと、操作したときの光り方も見られます': 'Same as the LEDs on the controller. Move a slider to see the touch effect',
+  '（割り当て先のないスライダーは暗いままです）': '(Sliders with no target stay dim)',
+  // プロファイル
+  'プロファイルを追加': 'Add profile', '名前 (例: ゲーム、配信)': 'Name (e.g. Gaming, Streaming)',
+  '今の割り当て・スライダーの設定をコピーする': 'Copy the current assignments and slider settings', '作成': 'Create',
+  '作ったら、そのプロファイルに切り替えて割り当てを変えてください。': 'After creating it, switch to it and change the assignments.',
+  '外す': 'Remove', '名前': 'Name', '名前を変更': 'Rename', 'このアプリが前に来たら自動で切り替える': 'Switch automatically when these apps come to the front',
+  'そのアプリを終了すると、元のプロファイルに戻ります。': 'Switches back when the app quits.', '切り替えのショートカット': 'Shortcut',
+  'このプロファイルを削除': 'Delete this profile', '追加': 'Add', 'アプリを選ぶ (例: valorant.exe)': 'Choose an app (e.g. valorant.exe)',
+  '使用中のプロファイルは消せません': "You can't delete the active profile",
+  // アプリから届くメッセージ
+  'プロファイルの名前は 1〜24 文字で付けてください (前後の空白なし)': 'Profile names must be 1–24 characters (no leading or trailing spaces)',
+  '使用中のプロファイルは消せません。先に別のプロファイルに切り替えてください': "You can't delete the active profile. Switch to another profile first",
+  '端の位置を測っていません': 'Nothing has been measured', 'アプリ一覧が使えません': "The app list isn't available", '接続先が空です': 'Port is empty',
+  'ポート番号は 1〜65535 です': 'Port must be 1–65535', '受信なし': 'No data received', 'ほかのアプリが使っているため登録できません': 'In use by another app',
+  '切断されました': 'Disconnected', 'OBS との接続が切れました': 'Lost connection to OBS', 'OBS のパスワードが違います': 'Wrong OBS password',
+  'OBS に接続できません (OBS が起動していて、WebSocket サーバーが有効か確認してください)': "Can't connect to OBS (make sure OBS is running and its WebSocket server is enabled)",
+  'OBS からの最初の応答が想定と違います': 'Unexpected first response from OBS',
+  'OBS の WebSocket にパスワードが設定されています。設定画面で入力してください': 'OBS WebSocket has a password. Enter it in the settings',
+  'OBS に接続を認めてもらえませんでした (パスワードを確認してください)': 'OBS rejected the connection (check the password)',
+  'OBS のパスワードが違います (OBS の [ツール] → [WebSocket サーバー設定] で確認できます)': 'Wrong OBS password (see Tools → WebSocket Server Settings in OBS)',
+};
+// 数字や名前が入る文言 (上の表で見つからないときに、上から順に試す)
+const I18N_EN_RE = [
+  [/^スライダー (\d+)$/, (m) => `Slider ${m[1]}`],
+  [/^Chrome タブ (\d+)$/, (m) => `Chrome tab ${m[1]}`],
+  [/^([\d.]+) 秒$/, (m) => `${m[1]} s`],
+  [/^([\d.]+) 分$/, (m) => `${m[1]} min`],
+  [/^(.+) の設定$/, (m) => `${trText(m[1])} settings`],
+  [/^(.+) を外す$/, (m) => `Remove ${trText(m[1])}`],
+  [/^(.+) から移動$/, (m) => `Move from ${trText(m[1])}`],
+  [/^今: (.+)$/, (m) => `Now: ${m[1]}`],
+  [/^最大 (\d+)%$/, (m) => `Max ${m[1]}%`],
+  [/^全体の設定（(.+)）$/, (m) => `Global setting (${trText(m[1])})`],
+  [/^そこより下は 0〜100%、上は 100〜(\d+)%。100% の前後は吸い付くので、ちょうど 100% に合わせやすくなっています。$/,
+    (m) => `Below it is 0–100%, above it 100–${m[1]}%. It snaps around 100%, so it is easy to hit exactly 100%.`],
+  [/^100% の位置 (\d+)%$/, (m) => `100% at ${m[1]}%`],
+  [/^変わり方 (.+)$/, (m) => `Smoothing ${trText(m[1])}`],
+  [/^スライダーの (\d+)%(（自動）)?$/, (m) => `${m[1]}% of the slider${m[2] ? ' (auto)' : ''}`],
+  [/^(\d+) 本だけ反転しています。切り替えると全部そろいます$/, (m) => `Only ${m[1]} inverted. Switching sets all sliders the same`],
+  [/^(\d+) 本合わせています。合わせた範囲はコントローラーにも保存され、LED も同じ範囲で動きます$/, (m) => `${m[1]} calibrated. The range is also saved to the controller and used for the LEDs`],
+  [/^(.+)（見つかりません）$/, (m) => `${m[1]} (not found)`],
+  [/^(.+) 接続中$/, (m) => `${m[1]} connected`],
+  [/^(.+) 未接続$/, (m) => `${m[1]} not connected`],
+  [/^(.+)の明るさ$/, (m) => `${trText(m[1])} brightness`],
+  [/^初期設定: (.+)$/, (m) => `Default: ${trText(m[1])}`],
+  [/^プロファイル「(.+)」$/, (m) => `Profile "${trText(m[1])}"`],
+  [/^プロファイル「(.+)」を削除しますか？$/, (m) => `Delete profile "${m[1]}"?`],
+  [/^(.+) の端の位置を保存しました(.*)$/, (m) => `Saved calibration for ${trNames(m[1])}${m[2] ? ' ' + trText(m[2].replace(/^[。、]\s*/, '')) : ''}`],
+  [/^(.+) は端まで届いているので、合わせる必要はありません$/, (m) => `${trNames(m[1])} already reach the ends; no calibration needed`],
+  [/^コントローラーをつないだ USB の COM ポート。ID (.+)（ファームウェア (.+)）。別の USB の口に差しても、自動で探してつなぎ直します$/,
+    (m) => `The USB COM port the controller is connected to. ID ${m[1]} (firmware ${m[2]}). If you plug it into another USB port, it is found and reconnected automatically`],
+  [/^プロファイルがありません: (.+)$/, (m) => `No such profile: ${m[1]}`],
+  [/^同じ名前のプロファイルがあります: (.+)$/, (m) => `A profile with that name already exists: ${m[1]}`],
+  [/^アプリの exe 名（例: valorant.exe）を入れてください: (.*)$/, (m) => `Enter an app's exe name (e.g. valorant.exe): ${m[1]}`],
+  [/^スライダーの番号が範囲外です: (.+)$/, (m) => `Slider number out of range: ${m[1]}`],
+  [/^割り当て先として使えない名前です: (.+)$/, (m) => `Can't be used as a target: ${m[1]}`],
+  [/^変更できない設定です: (.+)$/, (m) => `This setting can't be changed: ${m[1]}`],
+  [/^ショートカットの名前が違います: (.+)$/, (m) => `Unknown shortcut: ${m[1]}`],
+  [/^不明な操作です: (.+)$/, (m) => `Unknown action: ${m[1]}`],
+  [/^同じショートカット \((.+)\) が 2 か所に設定されています$/, (m) => `The same shortcut (${m[1]}) is set in two places`],
+  [/^コントローラーが (.+) に移ったので、つなぎ直しました$/, (m) => `The controller moved to ${m[1]}, so it was reconnected`],
+  [/^OBS に接続できません: (.+)$/, (m) => `Can't connect to OBS: ${m[1]}`],
+  [/^OBS との通信に失敗: (.+)$/, (m) => `Communication with OBS failed: ${m[1]}`],
+];
+const I18N_JP = /[぀-ヿ一-鿿]/;
+const I18N_ATTRS = ['placeholder', 'title', 'aria-label'];
+let LANG = 'ja';
+try { LANG = localStorage.getItem('deej-lang') === 'en' ? 'en' : 'ja'; } catch (e) { /* 保存できない環境 */ }
+
+function trText(s) {
+  /** 1 つの文言を今の言語にする。表になければそのまま */
+  if (LANG !== 'en' || !s || !I18N_JP.test(s)) return s;
+  const key = s.replace(/\s+/g, ' ').trim();
+  if (key in I18N_EN) return s.replace(s.trim(), I18N_EN[key]);
+  for (const [re, fn] of I18N_EN_RE) {
+    const m = key.match(re);
+    if (m) return s.replace(s.trim(), fn(m));
+  }
+  return s;
+}
+function trNames(s) { return s.split(/[・、]/).map((x) => trText(x.trim())).join(', '); }
+
+function trNode(node) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const p = node.parentNode;
+    if (p && (p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE')) return;
+    const t = trText(node.data);
+    if (t !== node.data) node.data = t;
+  } else if (node.nodeType === Node.ELEMENT_NODE) {
+    for (const a of I18N_ATTRS) {
+      const v = node.getAttribute(a);
+      if (v && I18N_JP.test(v)) { const t = trText(v); if (t !== v) node.setAttribute(a, t); }
+    }
+    if (node.nodeName === 'INPUT' && (node.type === 'button' || node.type === 'submit')) node.value = trText(node.value);
+    const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        const p = n.parentNode;
+        if (p && (p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE')) continue;
+        const t = trText(n.data);
+        if (t !== n.data) n.data = t;
+      } else {
+        for (const a of I18N_ATTRS) {
+          const v = n.getAttribute(a);
+          if (v && I18N_JP.test(v)) { const t = trText(v); if (t !== v) n.setAttribute(a, t); }
+        }
+      }
+    }
+  }
+}
+const i18nObserver = new MutationObserver((list) => {
+  if (LANG !== 'en') return;
+  for (const m of list) {
+    if (m.type === 'characterData') trNode(m.target);
+    else if (m.type === 'attributes') trNode(m.target);
+    else m.addedNodes.forEach(trNode);
+  }
+});
+function applyLang(lang) {
+  /** アプリから届いた言語に合わせる。英語 → 日本語は元の文言を取っていないので読み直す */
+  lang = lang === 'en' ? 'en' : 'ja';
+  try { localStorage.setItem('deej-lang', lang); } catch (e) { /* 保存できない環境 */ }
+  if (lang === LANG) return;
+  if (lang === 'ja') { location.reload(); return; }
+  LANG = lang;
+  startI18n();
+}
+function startI18n() {
+  document.documentElement.lang = LANG;
+  if (LANG !== 'en') return;
+  trNode(document.body);
+  i18nObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: I18N_ATTRS });
+}
+// confirm の文言も置き換える
+const i18nConfirm = window.confirm.bind(window);
+window.confirm = (msg) => i18nConfirm(trText(msg));
+startI18n();
+
 const FAKE_PORT = 'socket://127.0.0.1:9000';
 const NAMES = ['スライダー 1', 'スライダー 2', 'スライダー 3', 'スライダー 4', 'スライダー 5', 'ノブ'];
 const MAX_CHOICES = [25, 50, 75, 100, 125, 150, 200, 250, 300, 400];
@@ -952,6 +1227,7 @@ function renderSettings() {
   document.getElementById('power-text').textContent = state.enabled ? '有効' : '一時停止中';
   document.body.classList.toggle('paused', !state.enabled);
   document.querySelectorAll('#noise button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === o.noise_reduction)));
+  document.querySelectorAll('#language button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === (o.language || 'auto'))));
   document.querySelectorAll('#led-mode button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === o.led_mode)));
   document.querySelectorAll('#glide button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.v) === Number(o.glide || 0))));
   document.getElementById('restore').checked = !!o.restore_on_pause;
@@ -995,6 +1271,7 @@ document.getElementById('port-apply').addEventListener('click', () => {
 });
 document.getElementById('invert').addEventListener('change', (e) => setOption('invert_sliders', e.target.checked));
 document.querySelectorAll('#noise button').forEach((b) => b.addEventListener('click', () => setOption('noise_reduction', b.dataset.v)));
+document.querySelectorAll('#language button').forEach((b) => b.addEventListener('click', () => setOption('language', b.dataset.v)));
 document.getElementById('autostart').addEventListener('change', (e) => send({ type: 'set_autostart', value: e.target.checked }));
 document.getElementById('enabled').addEventListener('change', (e) => send({ type: 'set_enabled', value: e.target.checked }));
 document.querySelectorAll('#led-mode button').forEach((b) => b.addEventListener('click', () => setOption('led_mode', b.dataset.v)));
@@ -1554,6 +1831,7 @@ function connect() {
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === 'config') {
+      applyLang(m.lang);
       Object.assign(state, {
         enabled: m.enabled, mapping: m.mapping, sliders: m.sliders, options: m.options,
         autostart: m.autostart, channels: m.channels, profiles: m.profiles, active_profile: m.active_profile,

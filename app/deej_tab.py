@@ -32,7 +32,7 @@ import leds
 
 log = logging.getLogger("deej-tab")
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 LINE_RE = re.compile(r"^\d{1,4}(\|\d{1,4})*$")
 # コントローラーの ID の行 (ファームウェア deej-6ch-led 1.3 以降): @ID|名前|版|8 桁の 16 進
@@ -89,6 +89,41 @@ UI_PROFILE_DIR = os.path.join(UI_DATA_DIR, "ui-profile")
 WINDOW_FILE = os.path.join(UI_DATA_DIR, "window.json")
 DEFAULT_WINDOW = (1045, 1010)   # 論理ピクセル (150% なら実際は 1.5 倍)。window.json がない時だけ使う
 
+LANGUAGES = ("auto", "ja", "en")
+# タスクトレイなど Python 側で出す文言の英語 (設定画面の英語は ui.html の I18N_EN)
+TEXT_EN = {
+    "設定を開く": "Open settings",
+    "一時停止 (スライダーで音量を変えない)": "Pause (sliders don't change the volume)",
+    "プロファイル": "Profile",
+    "Windows の起動時に自動で起動": "Start with Windows",
+    "終了": "Quit",
+    "deej-tab - 一時停止中 (スライダーで音量は変わりません)": "deej-tab - Paused (sliders don't change the volume)",
+    "deej-tab - {port} に接続中": "deej-tab - Connected to {port}",
+    "deej-tab - デバイス未接続 ({port})": "deej-tab - Controller not connected ({port})",
+}
+
+
+def system_language():
+    """Windows の表示言語が日本語なら ja、それ以外は en"""
+    if sys.platform == "win32":
+        try:
+            return "ja" if (ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF) == 0x11 else "en"
+        except Exception:
+            pass
+    import locale
+    return "ja" if (locale.getlocale()[0] or "").lower().startswith(("ja", "japanese")) else "en"
+
+
+def resolve_language(language):
+    """設定の language (auto / ja / en) から、実際に使う言語 (ja / en)"""
+    return system_language() if language == "auto" else language
+
+
+def tr(text, lang, **kw):
+    """Python 側の文言を lang の言語にする。kw は {name} の差し込み"""
+    return (TEXT_EN.get(text, text) if lang == "en" else text).format(**kw)
+
+
 DEFAULT_CONFIG = """slider_mapping:
   0: tab.1
   1: tab.2
@@ -128,6 +163,7 @@ CONFIG_HEADER = """\
 # restore_on_pause: 一時停止・終了した時に、Windows と OBS の音量を deej-tab が変える前に戻す
 # pickup: プロファイルを切り替えた時、スライダーが今の音量の位置を通るまで効かせない (音量が飛ばない)
 # hotkeys.pause: 一時停止のショートカット (例: ctrl+alt+p)
+# language: 画面の言語 auto (Windows の表示言語に合わせる) / ja / en
 # led_mode: off / status (状態を表示) / meter (音に合わせて光る)。ファームウェア deej-6ch-led が必要
 # led_params: LED の光り方の数値 (設定画面の「LED の光り方」で変える。既定から変えたものだけ書く)
 # led_presets: 光り方ごとに覚えた明るさなど (切り替えると、その光り方で前に使っていた数値に戻す)
@@ -198,6 +234,7 @@ class Config:
         self.device_id = ""        # 最後につないだコントローラーの ID (8 桁の 16 進。分からなければ "")
         self.hotkeys = {"pause": ""}
         self.led_mode = "status"
+        self.language = "auto"     # 画面の言語 (auto / ja / en)
         self.led_params = {}       # 光り方の数値のうち、既定から変えたもの (leds.PARAMS の名前)
         self.led_presets = {}      # 光り方ごとに覚えた数値 {"IDLE_STYLE": {"5": {"DIM": 20, …}}}
         self.obs = {"enabled": False, "host": "127.0.0.1", "port": 4455, "password": ""}
@@ -223,6 +260,8 @@ class Config:
         self.ws_port = int(raw.get("websocket_port", 8765))
         self.restore_on_pause = bool(raw.get("restore_on_pause", True))
         self.pickup = bool(raw.get("pickup", True))
+        lang = str(raw.get("language", "auto")).lower()
+        self.language = lang if lang in LANGUAGES else "auto"
         self.glide_default = parse_glide(raw.get("glide", 0.0))
         dev = str(raw.get("device_id") or "").upper()
         self.device_id = dev if re.fullmatch(r"[0-9A-F]{8}", dev) else ""
@@ -836,6 +875,7 @@ class DeejTab:
         self.device = None           # 今つないでいるコントローラーの {"id", "fw", "name"} (ID を送らなければ None)
         self._searched_ports = None  # 最後にコントローラーを探した時の USB ポートの一覧 (変わった時だけ探し直す)
         self._sent_enabled = config.enabled
+        self._sent_lang = resolve_language(config.language)   # 拡張機能に送った言語 (つないだ時にも送る)
         self._sent_meter = None
         self._last_lists = None
         self.config_lock = threading.Lock()
@@ -1347,6 +1387,10 @@ class DeejTab:
         if self.config.enabled != self._sent_enabled:
             self._sent_enabled = self.config.enabled
             self.broadcast({"type": "enabled", "value": self.config.enabled})
+        lang = resolve_language(self.config.language)
+        if lang != self._sent_lang:   # 拡張機能の文言も同じ言語にする
+            self._sent_lang = lang
+            self.broadcast({"type": "lang", "value": lang})
         if self.config.led_presets != self.led_presets:
             self.led_presets = copy.deepcopy(self.config.led_presets)
         want = dict(leds.PARAMS, **self.config.led_params)
@@ -1570,7 +1614,9 @@ class DeejTab:
             "sliders": sliders,
             "options": {"com_port": c.com_port, "invert_sliders": c.invert,
                         "noise_reduction": c.noise, "restore_on_pause": c.restore_on_pause,
-                        "pickup": c.pickup, "led_mode": c.led_mode, "glide": c.glide_default},
+                        "pickup": c.pickup, "led_mode": c.led_mode, "glide": c.glide_default,
+                        "language": c.language},
+            "lang": resolve_language(c.language),   # 実際に使う言語 (auto を解いたもの)
             "led_params": dict(self.led_params),
             "led_meta": {"defaults": leds.PARAMS, "limits": leds.PARAM_LIMITS, "idle_styles": leds.IDLE_STYLES,
                          "boot_styles": leds.BOOT_STYLES, "touch_styles": leds.TOUCH_STYLES},
@@ -1741,6 +1787,9 @@ class DeejTab:
             elif key == "led_mode":
                 if value not in LED_MODES:
                     raise ValueError(f"led_mode: {value}")
+            elif key == "language":
+                if value not in LANGUAGES:
+                    raise ValueError(f"language: {value}")
             else:
                 raise ValueError(f"変更できない設定です: {key}")
             with self.config_lock:
@@ -1895,6 +1944,7 @@ class DeejTab:
             await ws.send(json.dumps({"type": "slots", "slots": self.config.tab_slots()}))
             await ws.send(json.dumps({"type": "state", "enabled": self.config.enabled,
                                       "values": {str(k): v for k, v in self.tab_values.items()}}))
+            await ws.send(json.dumps({"type": "lang", "value": resolve_language(self.config.language)}))
             if self._sent_meter:
                 await ws.send(json.dumps({"type": "meter", "on": True}))
             async for raw in ws:
@@ -2515,12 +2565,12 @@ def tray_image(lit=True):
     return app_icon(64, lit)
 
 
-def tray_title(state, enabled=True):
+def tray_title(state, enabled=True, lang="ja"):
     if not enabled:
-        return "deej-tab - 一時停止中 (スライダーで音量は変わりません)"
+        return tr("deej-tab - 一時停止中 (スライダーで音量は変わりません)", lang)
     if state["connected"]:
-        return f"deej-tab - {state['port']} に接続中"
-    return f"deej-tab - デバイス未接続 ({state['port']})"
+        return tr("deej-tab - {port} に接続中", lang, port=state["port"])
+    return tr("deej-tab - デバイス未接続 ({port})", lang, port=state["port"])
 
 
 def restore_tray_icon(icon):
@@ -2580,20 +2630,27 @@ def run_tray(app, port):
             yield pystray.MenuItem(name, switch(name), radio=True,
                                    checked=lambda item, n=name: app.config.active_profile == n)
 
+    def lang():
+        return resolve_language(app.config.language)
+
+    def text(s):
+        """メニューを開くたびに今の言語で出す"""
+        return lambda item: tr(s, lang())
+
     icons = {True: tray_image(True), False: tray_image(False)}
     state = dict(app.serial_state)
     icon = pystray.Icon(
-        "deej-tab", icons[state["connected"] and app.config.enabled], tray_title(state, app.config.enabled),
+        "deej-tab", icons[state["connected"] and app.config.enabled], tray_title(state, app.config.enabled, lang()),
         menu=pystray.Menu(
-            pystray.MenuItem("設定を開く", on_open, default=True),
-            pystray.MenuItem("一時停止 (スライダーで音量を変えない)", on_pause,
+            pystray.MenuItem(text("設定を開く"), on_open, default=True),
+            pystray.MenuItem(text("一時停止 (スライダーで音量を変えない)"), on_pause,
                              checked=lambda item: not app.config.enabled),
-            pystray.MenuItem("プロファイル", pystray.Menu(profile_items),
+            pystray.MenuItem(text("プロファイル"), pystray.Menu(profile_items),
                              visible=lambda item: len(app.config.profiles) > 1),
-            pystray.MenuItem("Windows の起動時に自動で起動", on_autostart,
+            pystray.MenuItem(text("Windows の起動時に自動で起動"), on_autostart,
                              checked=lambda item: autostart_enabled()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("終了", on_quit),
+            pystray.MenuItem(text("終了"), on_quit),
         ),
     )
 
@@ -2606,12 +2663,12 @@ def run_tray(app, port):
             state = dict(app.serial_state)
             enabled = app.config.enabled
             key = (state["connected"], state["port"], enabled, app.config.active_profile,
-                   tuple(app.config.profiles))
+                   tuple(app.config.profiles), app.config.language)
             if key != shown:
                 shown = key
                 # 一時停止中は未接続と同じ灰色のつまみ (光らせない)
                 icon.icon = icons[state["connected"] and enabled]
-                icon.title = tray_title(state, enabled) + (
+                icon.title = tray_title(state, enabled, lang()) + (
                     f" [{app.config.active_profile}]" if len(app.config.profiles) > 1 else "")
                 icon.update_menu()
             if time.monotonic() >= next_tray_check:

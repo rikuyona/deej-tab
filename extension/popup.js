@@ -1,10 +1,6 @@
 // background.js と Port でつながり、状態が変わった時だけ描き直す (スライダー値は値だけ更新)
 
-const METHOD_HINTS = {
-  Y: 'タブの音をまとめて調整します。0 で完全に無音になり、100% を超えて大きくもできます。割り当て中は、タブにキャプチャ中のマークが出ます',
-  X: 'ページ内の動画・音声の音量を直接変えます。100% までで、サイトによっては 0 でもかすかに聞こえます',
-};
-const SWITCH_NOTE = '切り替えると割り当ては解除されます';
+const METHOD_HINTS = { Y: 'hintY', X: 'hintX' };   // i18n.js のキー
 
 let currentTab = null;
 let supported = true;
@@ -12,6 +8,17 @@ let state = null;
 const rows = new Map(); // slot -> { li, bar, val }
 
 const $ = (id) => document.getElementById(id);
+
+// HTML の固定の文字を今の言語にする (data-i18n: 文字, data-i18n-html: 太字入り, data-i18n-aria: aria-label)
+function applyStatic() {
+  document.documentElement.lang = LANG;
+  document.title = t('name');
+  document.querySelectorAll('[data-i18n]').forEach((e) => {
+    e.replaceChildren(...t(e.dataset.i18n).split('\n').flatMap((line, i) => (i ? [document.createElement('br'), line] : [line])));
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach((e) => { e.innerHTML = t(e.dataset.i18nHtml); });   // 文言は i18n.js の固定の文字だけ
+  document.querySelectorAll('[data-i18n-aria]').forEach((e) => e.setAttribute('aria-label', t(e.dataset.i18nAria)));
+}
 
 // 音量を変えられないページ (chrome:// や ウェブストアなど)
 function isSupported(url) {
@@ -30,7 +37,7 @@ async function act(msg, button) {
   if (button) button.disabled = true;
   try {
     const res = await chrome.runtime.sendMessage(msg);
-    showError(res?.ok ? '' : (res?.error || '操作に失敗しました'));
+    showError(res?.ok ? '' : (res?.error || t('errFailed')));
   } catch (e) {
     showError(String(e?.message || e));
   } finally {
@@ -62,14 +69,14 @@ function render() {
   const status = $('status');
   const paused = s.connected && s.enabled === false;
   status.className = 'pill ' + (s.connected && !paused ? 'on' : 'off');
-  status.querySelector('span').textContent = !s.connected ? 'deej-tab 未起動' : paused ? '一時停止中' : '接続中';
-  status.title = paused ? 'deej-tab でスライダー操作が一時停止されています。タブは元の音量です' : '';
+  status.querySelector('span').textContent = !s.connected ? t('notRunning') : paused ? t('paused') : t('connected');
+  status.title = paused ? t('pausedTitle') : '';
   document.body.classList.toggle('paused', paused);
 
   document.querySelectorAll('.seg button').forEach((b) => {
     b.setAttribute('aria-checked', String(b.dataset.method === s.method));
   });
-  $('method-hint').textContent = `${METHOD_HINTS[s.method] || ''}。${SWITCH_NOTE}`;
+  $('method-hint').textContent = `${METHOD_HINTS[s.method] ? t(METHOD_HINTS[s.method]) : ''}${LANG === 'ja' ? '。' : '. '}${t('switchNote')}`;
 
   const list = $('slots');
   list.replaceChildren();
@@ -77,10 +84,10 @@ function render() {
   $('empty').hidden = s.slots.length > 0;
 
   for (const slot of s.slots) {
-    const t = s.tabs[slot];
-    const mine = t && t.id === currentTab?.id;
+    const tab = s.tabs[slot];
+    const mine = tab && tab.id === currentTab?.id;
     const li = document.createElement('li');
-    li.className = t ? (mine ? 'assigned mine' : 'assigned') : '';
+    li.className = tab ? (mine ? 'assigned mine' : 'assigned') : '';
 
     const led = document.createElement('span');
     led.className = 'led';
@@ -90,7 +97,7 @@ function render() {
     const head = document.createElement('div');
     head.className = 'head';
     const name = document.createElement('b');
-    name.textContent = `タブ ${slot}`;
+    name.textContent = t('tabN', slot);
     const val = document.createElement('span');
     val.className = 'val';
     head.append(name, val);
@@ -100,19 +107,19 @@ function render() {
     const bar = document.createElement('i');
     meter.append(bar);
 
-    const target = document.createElement(t && !mine ? 'button' : 'div');
+    const target = document.createElement(tab && !mine ? 'button' : 'div');
     target.className = 'target';
-    if (t) {
-      target.append(favicon(t.favIconUrl));
+    if (tab) {
+      target.append(favicon(tab.favIconUrl));
       const title = document.createElement('span');
-      title.textContent = mine ? 'このタブ' : t.title;
+      title.textContent = mine ? t('thisTab') : tab.title;
       target.append(title);
       if (!mine) {
-        target.title = 'このタブを表示';
-        target.addEventListener('click', () => focusTab(t));
+        target.title = t('showTab');
+        target.addEventListener('click', () => focusTab(tab));
       }
     } else {
-      target.textContent = '未割り当て';
+      target.textContent = t('unassigned');
     }
     body.append(head, meter, target);
 
@@ -121,23 +128,23 @@ function render() {
     if (mine) {
       const b = document.createElement('button');
       b.className = 'btn';
-      b.textContent = '解除';
+      b.textContent = t('unassign');
       b.addEventListener('click', () => act({ type: 'unassign', slot }, b));
       actions.append(b);
     } else {
       const b = document.createElement('button');
       b.className = 'btn primary';
-      b.textContent = t ? '入れ替え' : '割り当て';
-      b.title = t ? 'このタブに入れ替える' : 'このタブを割り当てる';
+      b.textContent = tab ? t('swap') : t('assign');
+      b.title = tab ? t('swapTitle') : t('assignTitle');
       b.disabled = !supported;
       b.addEventListener('click', () => act({ type: 'assign', slot, tabId: currentTab.id }, b));
       actions.append(b);
-      if (t) {
+      if (tab) {
         const x = document.createElement('button');
         x.className = 'btn icon';
         x.textContent = '×';
-        x.title = '割り当てを解除';
-        x.setAttribute('aria-label', `タブ ${slot} の割り当てを解除`);
+        x.title = t('unassignTitle');
+        x.setAttribute('aria-label', t('unassignAria', slot));
         x.addEventListener('click', () => act({ type: 'unassign', slot }, x));
         actions.append(x);
       }
@@ -171,6 +178,8 @@ document.querySelectorAll('.seg button').forEach((b) => {
 });
 
 (async () => {
+  await loadLang();
+  applyStatic();
   [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   supported = isSupported(currentTab?.url);
   $('current-title').textContent = currentTab?.title || '';
@@ -185,6 +194,7 @@ document.querySelectorAll('.seg button').forEach((b) => {
   const port = chrome.runtime.connect({ name: 'popup' });
   port.onMessage.addListener((msg) => {
     if (msg.type === 'state') {
+      if (msg.lang && msg.lang !== LANG) { LANG = msg.lang; applyStatic(); }
       state = msg;
       render();
     } else if (msg.type === 'values' && state) {

@@ -1,0 +1,32 @@
+{
+  "name": {
+    "message": "deej Tab Volume"
+  },
+  "description": {
+    "message": "Control the volume of each Chrome tab with the physical sliders of deej-tab"
+  },
+  "cmdPopup": {
+    "message": "Open the popup"
+  },
+  "cmdNext": {
+    "message": "Assign this tab to the next free number (press again to move on; the last press unassigns)"
+  },
+  "cmdSlot1": {
+    "message": "Assign this tab to Tab 1 (press again to unassign)"
+  },
+  "cmdSlot2": {
+    "message": "Assign this tab to Tab 2 (press again to unassign)"
+  },
+  "cmdSlot3": {
+    "message": "Assign this tab to Tab 3 (press again to unassign)"
+  },
+  "cmdSlot4": {
+    "message": "Assign this tab to Tab 4 (press again to unassign)"
+  },
+  "cmdSlot5": {
+    "message": "Assign this tab to Tab 5 (press again to unassign)"
+  },
+  "cmdSlot6": {
+    "message": "Assign this tab to Tab 6 (press again to unassign)"
+  }
+}

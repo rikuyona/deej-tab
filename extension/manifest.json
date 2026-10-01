@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "deej タブ音量",
-  "version": "1.3.1",
-  "description": "deej-tab の物理スライダーで、Chrome のタブごとの音量を操作します",
+  "name": "__MSG_name__",
+  "default_locale": "en",
+  "version": "1.4.0",
+  "description": "__MSG_description__",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon16.png",
@@ -28,7 +29,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "deej タブ音量",
+    "default_title": "__MSG_name__",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
@@ -39,37 +40,37 @@
       "suggested_key": {
         "default": "Alt+Shift+D"
       },
-      "description": "ポップアップを開く"
+      "description": "__MSG_cmdPopup__"
     },
     "slot-next": {
-      "description": "このタブを空いている番号に割り当てる (押すたびに次の番号へ移り、最後は解除)",
+      "description": "__MSG_cmdNext__",
       "suggested_key": {
         "default": "Alt+Shift+A"
       }
     },
     "slot-1": {
-      "description": "このタブをタブ 1 に割り当てる (もう一度押すと解除)",
+      "description": "__MSG_cmdSlot1__",
       "suggested_key": {
         "default": "Alt+Shift+1"
       }
     },
     "slot-2": {
-      "description": "このタブをタブ 2 に割り当てる (もう一度押すと解除)",
+      "description": "__MSG_cmdSlot2__",
       "suggested_key": {
         "default": "Alt+Shift+2"
       }
     },
     "slot-3": {
-      "description": "このタブをタブ 3 に割り当てる (もう一度押すと解除)"
+      "description": "__MSG_cmdSlot3__"
     },
     "slot-4": {
-      "description": "このタブをタブ 4 に割り当てる (もう一度押すと解除)"
+      "description": "__MSG_cmdSlot4__"
     },
     "slot-5": {
-      "description": "このタブをタブ 5 に割り当てる (もう一度押すと解除)"
+      "description": "__MSG_cmdSlot5__"
     },
     "slot-6": {
-      "description": "このタブをタブ 6 に割り当てる (もう一度押すと解除)"
+      "description": "__MSG_cmdSlot6__"
     }
   }
 }

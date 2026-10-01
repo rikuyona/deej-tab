@@ -1,5 +1,7 @@
 // deej-tab (PCアプリ) と WebSocket でつながり、スロットに割り当てたタブの音量を変える
 
+importScripts('i18n.js');   // 文言 (t)。言語は deej-tab の設定に合わせる
+
 const WS_URL = 'ws://127.0.0.1:8765';
 const HEALTH_URL = 'http://127.0.0.1:8765/health';
 // スライダーの音量(0〜1) → ゲイン の変換。2 = 2乗 (小さい音量側を細かく調整できる)。1 にすると比例
@@ -48,6 +50,7 @@ const ready = (async () => {
   ]);
   assignments = a;
   method = m;
+  await loadLang();
   await reconcile();
   for (const [s, t] of Object.entries(assignments)) setBadge(t, s);
 })();
@@ -102,6 +105,16 @@ chrome.action.setBadgeBackgroundColor({ color: LED });
 chrome.action.setBadgeTextColor({ color: '#ffffff' });
 
 let iconKey = null;
+// deej-tab の言語に合わせる。覚えておき、アイコンの説明・右クリックメニュー・ポップアップを描き直す
+function setLang(lang) {
+  if ((lang !== 'ja' && lang !== 'en') || lang === LANG) return;
+  LANG = lang;
+  chrome.storage.local.set({ lang }).catch(() => {});
+  iconKey = null;
+  updateIcon();
+  buildMenus();
+  pushState();
+}
 function setConnected(on) {
   connected = on;
   updateIcon();
@@ -115,9 +128,9 @@ function updateIcon() {
   chrome.action.setIcon({ path: key === 'on' ? ICON_ON : ICON_OFF }).catch(() => {});
   chrome.action.setTitle({
     title: {
-      on: 'deej タブ音量',
-      paused: 'deej タブ音量 — 一時停止中 (タブは元の音量です)',
-      off: 'deej タブ音量 — deej-tab が起動していません',
+      on: t('name'),
+      paused: t('titlePaused'),
+      off: t('titleOff'),
     }[key],
   }).catch(() => {});
 }
@@ -193,6 +206,8 @@ async function connect() {
       setEnabled(msg.value);
     } else if (msg.type === 'meter') {
       setMeter(msg.on);
+    } else if (msg.type === 'lang') {
+      setLang(msg.value);
     }
     // 'ping' は Service Worker を止めないためのもので、何もしない
   };
@@ -275,7 +290,7 @@ async function ensureOffscreen() {
   await chrome.offscreen.createDocument({
     url: 'offscreen.html',
     reasons: ['USER_MEDIA'],
-    justification: 'タブ音声にゲインをかけて再生するため',
+    justification: 'Play the tab audio with a gain applied',
   });
 }
 // offscreen が無い時は undefined を返す
@@ -288,12 +303,12 @@ function toOffscreen(msg) {
 // Chrome のエラーを分かる言葉にする
 function explain(e) {
   const m = String(e?.message || e);
-  if (/Chrome pages cannot be captured|cannot be captured/i.test(m)) return 'このページの音声はキャプチャできません';
+  if (/Chrome pages cannot be captured|cannot be captured/i.test(m)) return t('errCannotCapture');
   if (/not been invoked|activeTab|invoked for the current page/i.test(m)) {
-    return 'このタブでポップアップを開き直してから割り当ててください';
+    return t('errReopen');
   }
-  if (/active stream/i.test(m)) return 'このタブは別の機能で録音・共有中のため、キャプチャできません';
-  if (/No tab with id/i.test(m)) return 'タブが見つかりません (閉じられた可能性があります)';
+  if (/active stream/i.test(m)) return t('errBusy');
+  if (/No tab with id/i.test(m)) return t('errNoTab');
   return m;
 }
 
@@ -318,7 +333,7 @@ async function assign(slot, tabId) {
     if (from !== undefined) {
       // 別のスロットから移すだけなら、キャプチャはそのまま使う
       const res = await toOffscreen({ type: 'capture-move', from, to: slot });
-      if (!res?.ok) throw new Error('キャプチャを移せませんでした');
+      if (!res?.ok) throw new Error(t('errMove'));
     } else {
       // ポップアップを開いた(=拡張機能を呼び出した)タブでのみ取得できる
       const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
@@ -326,7 +341,7 @@ async function assign(slot, tabId) {
       const res = await toOffscreen({
         type: 'capture-start', slot, streamId, gain: slotGain(slot), meter: meterOn,
       });
-      if (!res?.ok) throw new Error(res?.error || 'キャプチャを開始できませんでした');
+      if (!res?.ok) throw new Error(res?.error || t('errStart'));
     }
   }
   if (from !== undefined) delete assignments[from];
@@ -342,7 +357,7 @@ async function unassign(slot) {
 }
 
 async function setMethod(m) {
-  if (m !== 'X' && m !== 'Y') throw new Error(`不明な方式です: ${m}`);
+  if (m !== 'X' && m !== 'Y') throw new Error(t('errMethod', m));
   if (m === method) return;
   // 方式Yはタブごとにクリックが必要なので、切り替え時は全部外す
   for (const s of Object.keys(assignments)) await release(Number(s));
@@ -386,10 +401,10 @@ async function snapshot() {
       const tab = await chrome.tabs.get(t);
       tabs[s] = { id: t, title: tab.title, favIconUrl: tab.favIconUrl, windowId: tab.windowId };
     } catch {
-      tabs[s] = { id: t, title: '(閉じたタブ)' };
+      tabs[s] = { id: t, title: t('closedTab') };
     }
   }
-  return { type: 'state', connected, enabled, slots, values, tabs, method };
+  return { type: 'state', connected, enabled, slots, values, tabs, method, lang: LANG };
 }
 
 async function pushState() {
@@ -480,7 +495,7 @@ function nextSlot(tab) {
     const order = [...slots].sort((a, b) => a - b).filter((s) => s === cur || assignments[s] === undefined);
     if (cur === undefined) {
       if (!order.length) {
-        flash(tab.id, slots.length ? '満' : '?');
+        flash(tab.id, slots.length ? t('badgeFull') : '?');
         return;
       }
       await assign(order[0], tab.id);
@@ -526,19 +541,19 @@ function flash(tabId, text) {
 const MENU_CONTEXTS = ['page', 'frame', 'video', 'audio', 'action'];
 let menuKey = null;
 function buildMenus() {
-  const key = slots.join(',');
+  const key = LANG + ':' + slots.join(',');   // 言語が変わっても作り直す
   if (key === menuKey) return;
   menuKey = key;
   chrome.contextMenus.removeAll(() => {
     if (!slots.length) return;
-    chrome.contextMenus.create({ id: 'deej', title: 'deej タブ音量', contexts: MENU_CONTEXTS });
+    chrome.contextMenus.create({ id: 'deej', title: t('name'), contexts: MENU_CONTEXTS });
     for (const n of slots) {
       chrome.contextMenus.create({
-        id: `slot-${n}`, parentId: 'deej', title: `このタブをタブ ${n} に割り当て`, contexts: MENU_CONTEXTS,
+        id: `slot-${n}`, parentId: 'deej', title: t('menuSlot', n), contexts: MENU_CONTEXTS,
       });
     }
     chrome.contextMenus.create({ id: 'sep', parentId: 'deej', type: 'separator', contexts: MENU_CONTEXTS });
-    chrome.contextMenus.create({ id: 'unassign', parentId: 'deej', title: 'このタブの割り当てを解除', contexts: MENU_CONTEXTS });
+    chrome.contextMenus.create({ id: 'unassign', parentId: 'deej', title: t('menuUnassign'), contexts: MENU_CONTEXTS });
   });
 }
 
