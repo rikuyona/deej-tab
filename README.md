@@ -25,7 +25,7 @@
 
 ### PC
 
-- Windows 10 / 11、または macOS 14.2 以降（Mac は [Mac 版について](#mac-版について) を参照）
+- Windows 10 / 11、または macOS 14.2 以降の Apple シリコン（M1 以降）の Mac（Mac は [Mac 版について](#mac-版について) を参照）
 - Google Chrome 116 以降（タブの音量を操作する場合）
 
 ### 部品
@@ -220,6 +220,8 @@ start.bat
 - 仮スライダー：`tools/fake_sliders.bat` でコントローラーなしに試せます（config.yaml の `com_port` を `socket://127.0.0.1:9000` に）
 
 ## Mac 版について
+
+Apple シリコン（M1 以降）の Mac 用です。Intel の Mac では動きません。
 
 ### 入れ方
 
