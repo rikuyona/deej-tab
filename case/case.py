@@ -10,6 +10,9 @@
   bottom_case.stl                  底ケース (底 + 分割溝より下の側面 + 四隅の柱 + Nano の台 + スナップの溝)。底を下にした印刷向き
   nano_clip.stl                    Nano の押さえ (手前の面を下に立てて刷る)
   cap_shell.stl + cap_core.stl     スライダーのツマミ (黒い外殻 + 乳白の芯)。同じく同時に読み込んで1つの部品にし、色を割り当てる
+  fit_test.stl                     ツマミの爪のかかりのはめ合いテスト (1 色)
+  knob_body.stl + knob_line.stl    回転ボリュームのノブ (黒い本体 + 乳白の指示線)。上面を下にした印刷向き。同時に読み込んで1つの部品にする
+  knob_fit_test.stl                ノブの軸穴のはめ合いテスト (山の内径 5.5 / 5.6 / 5.7。1 色)
   viewer.html                      部品を入れた状態を回して見られる確認用ページ (ブラウザで開く)
 
 座標: X = 左→右, Y = 手前→奥, Z = 上。単位 mm。
@@ -72,6 +75,8 @@ PART_FILAMENT = {
     "cap_shell": "charcoal",    # ツマミの外殻
     "cap_core": "ivory",        # ツマミの芯 (白いライン)
     "nano_clip": "ash",         # Nano の押さえ (後付け。底ケースと同じ色)
+    "knob_body": "charcoal",    # ノブ (回転ボリューム用)
+    "knob_line": "ivory",       # ノブの指示線
 }
 
 # スライダー: Bourns PTL60 (データシートの寸法)
@@ -119,6 +124,12 @@ POT_TAB = (3.4, 1.8, 1.2, 7.8)               # 回り止めの逃げ 幅, 奥行
 KNOB = (15.0, 15.7, 14.5)                    # ABS-28 直径, 全高, ローレット部の高さ (YUNG の図面)
 KNOB_RECESS = (12.8, 3.85)                   # ABS-28 底のくぼみ 直径, 深さ (ナットにかぶさる)
 KNOB_BORE = 14.2                             # ABS-28 軸穴の深さ (底から。天井 1.5mm として)
+# 印刷用のノブ (2026-10-02)。外形・底のくぼみ・軸穴の深さは ABS-28 と同じにして、置き換えても位置が変わらないようにする。
+# 軸は 6mm・18 山のローレット。穴は丸 (外径) で、奥の部分にだけ内向きの山を立て、押し込むと山がローレットに食い込んで回らない
+KNOB_GRIP = (6.2, 5.6, 8.0, 18)              # 軸穴 外径, 山の先の内径, 山のある長さ (穴の奥から), 山の数
+KNOB_FIT_TEST = [5.5, 5.6, 5.7]              # はめ合いテスト 山の先の内径の候補 (きつい順)
+KNOB_KNURL = (30, 0.45)                      # 側面の縦溝 本数, 半径 (深さ)。0.4 ノズルで出る太さ
+KNOB_LINE = (1.2, 2.4, 0.6)                  # 上面の指示線 (乳白の別パーツを埋める) 幅, 中心側の端の半径, 深さ (0.2 積層で 3 層)
 SHAFT = 20.0                                 # ボリュームの軸の長さ (取付面から)
 NUT = (10.0, 2.0, 12.0, 0.4)                 # M7 ナット 二面幅, 厚さ / 座金 外径, 厚さ
 
@@ -740,24 +751,72 @@ def cap_shape():
     return halves[0] + halves[1], core
 
 
-def knob_shape():
-    """ABS-28。底面中心が原点。(本体, 指示線) を返す"""
+def knob_bore(grip=None):
+    """ノブの軸穴 (引く形)。底面が z=0。入口は丸 (外径) で面取り、奥の KNOB_GRIP[2] だけ内向きの山がある"""
+    od, gd, glen, n = KNOB_GRIP
+    gd = gd if grip is None else grip
+    plain = Manifold.cylinder(KNOB_BORE + 0.01, od / 2, od / 2, SEG).translate([0, 0, -0.01])
+    entry = Manifold.cylinder(0.6, od / 2 + 0.5, od / 2, SEG).translate([0, 0, -0.01])
+    # 山: 外径と内径を交互に結んだ星形の穴。山 (内径) の所が軸の溝に入る
+    star = []
+    for k in range(2 * n):
+        r = gd / 2 if k % 2 == 0 else od / 2
+        a = math.pi * k / n
+        star.append((r * math.cos(a), r * math.sin(a)))
+    grip_zone = Manifold.extrude(CrossSection([star]), glen).translate([0, 0, KNOB_BORE - glen])
+    # 山の付け根に 45° の斜面 (上を下にして刷ったとき、山が宙に浮かないように。軸も入りやすい)
+    lead = Manifold.cylinder((od - gd) / 2, od / 2, gd / 2, SEG).translate([0, 0, KNOB_BORE - glen - (od - gd) / 2])
+    hole = plain - (Manifold.cylinder(KNOB_BORE + 1, od / 2 + 1, od / 2 + 1, SEG).translate([0, 0, KNOB_BORE - glen]) - grip_zone)
+    hole = hole - (Manifold.cylinder((od - gd) / 2, od / 2 + 1, od / 2 + 1, SEG).translate([0, 0, KNOB_BORE - glen - (od - gd) / 2]) - lead)
+    return hole + entry
+
+
+def knob_shape(grip=None):
+    """回転ボリュームのノブ (印刷用。外形は ABS-28 と同じ寸法)。底面中心が原点。(本体, 指示線) を返す。
+    側面に縦溝、上面の縁は面取り、上面に乳白の指示線を埋める (手前 -Y 向き)。底のくぼみはナットにかぶさる"""
     d, h, hk = KNOB
     rd, rdepth = KNOB_RECESS
-    body = Manifold.cylinder(hk, d / 2, d / 2, SEG)
-    body = body + Manifold.cylinder(h - hk, d / 2 - 0.4, d / 2 - 0.9, SEG).translate([0, 0, hk])
-    # ローレット (縦の溝)
-    n = 40
-    grooves = [Manifold.cylinder(hk - 1.2, 0.35, 0.35, 8).translate([d / 2 * math.cos(2 * math.pi * k / n), d / 2 * math.sin(2 * math.pi * k / n), 0.6])
+    r = d / 2
+    prof = [(0, 0), (r - 0.4, 0), (r, 0.4), (r, hk - 1.5), (r - 0.9, h - 0.3), (r - 1.2, h), (0, h)]
+    body = Manifold.revolve(CrossSection([prof]), SEG)
+    n, gr = KNOB_KNURL
+    grooves = [Manifold.cylinder(hk - 1.5 - 1.0, gr, gr, 12).translate([r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n), 1.0])
                for k in range(n)]
     body = body - Manifold.batch_boolean(grooves, manifold3d.OpType.Add)
-    # 底のくぼみ (ナットにかぶさる) と軸穴
-    body = body - Manifold.cylinder(rdepth, rd / 2, rd / 2, SEG).translate([0, 0, -0.01])
-    body = body + (Manifold.cylinder(KNOB_BORE, 4.2, 4.2, SEG) - Manifold.cylinder(KNOB_BORE + 1, 3.0, 3.0, SEG).translate([0, 0, -0.5]))
-    body = body - Manifold.cylinder(KNOB_BORE, 3.0, 3.0, SEG).translate([0, 0, -0.01])
-    # 指示線 (上面、縁から 4mm、幅 1) 。手前 (-Y) 向き
-    line = Manifold.cube([1.0, 4.0, 0.2]).translate([-0.5, -(d / 2 - 0.9), h])
-    return body, line
+    # 底のくぼみ (ナットにかぶさる)。軸のまわりは筒で残す
+    body = body - (Manifold.cylinder(rdepth, rd / 2, rd / 2, SEG) - Manifold.cylinder(rdepth + 1, 4.2, 4.2, SEG)).translate([0, 0, -0.01])
+    body = body - knob_bore(grip)
+    lw, l0, ld = KNOB_LINE
+    top_r = r - 1.2
+    line = Manifold.cube([lw, top_r - 0.5 - l0, ld]).translate([-lw / 2, -(top_r - 0.5), h - ld])
+    groove = Manifold.cube([lw, top_r - 0.5 - l0, ld + 0.5]).translate([-lw / 2, -(top_r - 0.5), h - ld])   # 上面と同じ高さで切ると閉じた空洞になるので上へ抜く
+    return body - groove, line
+
+
+def knob_print():
+    """ノブを印刷の向きに (上面を下に。指示線が最初の数層になるので色替えが少ない)。(本体, 指示線)"""
+    body, line = knob_shape()
+    h = KNOB[1]
+    turn = lambda m: m.rotate([180, 0, 0]).translate([0, 0, h])
+    return turn(body), turn(line)
+
+
+def knob_fit_test():
+    """ノブの軸穴のはめ合いテスト: 軸穴の山の部分だけを、山の内径を変えて 3 つ並べる (1色)。
+    上面に内径 (1/10 mm、例 56 = 5.6) を刻む。ボリュームの軸に押し込んで、回らずに手で抜ける程度を選ぶ"""
+    od, gd, glen, n = KNOB_GRIP
+    hb = glen + 1.0                      # 山の長さ + 入口
+    out = []
+    for i, g in enumerate(KNOB_FIT_TEST):
+        block = Manifold.cube([12.0, 18.0, hb]).translate([-6.0, -6.0, 0])
+        hole = knob_bore(g).translate([0, 0, -(KNOB_BORE - hb)])          # 穴の奥を上面に合わせ、上まで抜く
+        hole = hole + Manifold.cylinder(2, od / 2, od / 2, SEG).translate([0, 0, hb - 0.5])
+        label = text_section(f"{round(g * 10)}", 3.4)
+        b = label.bounds()
+        label = label.translate([-(b[0] + b[2]) / 2, 8.5 - (b[1] + b[3]) / 2])
+        mark = Manifold.extrude(label, 0.6).translate([0, 0, hb - 0.4])
+        out.append((block - hole - mark).translate([i * 15.0, 0, 0]))
+    return Manifold.batch_boolean(out, manifold3d.OpType.Add)
 
 
 def knob_turn():
@@ -992,7 +1051,7 @@ def export_viewer(shell_m, bottom_m, part_list, out):
     import base64
     fc = {k: FILAMENT[v][1] for k, v in PART_FILAMENT.items()}
     colors = {"shelltop": fc["top_plate"], "marks": fc["marks"], "bottom": fc["bottom_case"], "slider": [190, 190, 184], "pins": [200, 170, 90], "lever": [28, 28, 30],
-              "cap": fc["cap_shell"], "capcore": fc["cap_core"], "line": [245, 245, 245], "pot": [180, 180, 180], "knob": [24, 24, 26],
+              "cap": fc["cap_shell"], "capcore": fc["cap_core"], "line": fc["knob_line"], "pot": [180, 180, 180], "knob": fc["knob_body"],
               "nano": [22, 78, 160], "nano_clip": fc["nano_clip"], "nano_pad": [214, 178, 90], "nano_ic": [26, 26, 28], "nano_metal": [205, 207, 212],
               "nano_btn": [235, 235, 230], "nano_led": [250, 250, 245]}
     scene = trimesh.Scene()
@@ -1112,6 +1171,10 @@ def main():
     to_trimesh(cs).export(os.path.join(out, "cap_shell.stl"))
     to_trimesh(cc).export(os.path.join(out, "cap_core.stl"))
     to_trimesh(fit_test()).export(os.path.join(out, "fit_test.stl"))   # はめ合いのテスト (1色)
+    kb, kl = knob_print()   # 上面を下に。2つは同じ位置なので同時に読み込んで1つの部品にし、色を割り当てる
+    to_trimesh(kb).export(os.path.join(out, "knob_body.stl"))
+    to_trimesh(kl).export(os.path.join(out, "knob_line.stl"))
+    to_trimesh(knob_fit_test()).export(os.path.join(out, "knob_fit_test.stl"))   # ノブの軸穴のはめ合いテスト (1色)
     for bw in (18.0, 18.2, 18.4):   # 基板の幅を測る前に出していた 3 種類
         if os.path.exists(os.path.join(out, f"nano_clip_{bw:.1f}.stl")):
             os.remove(os.path.join(out, f"nano_clip_{bw:.1f}.stl"))
@@ -1125,7 +1188,7 @@ def main():
     bb = base.bounding_box()
     print(f"bottom_case.stl 印刷サイズ {bb[3] - bb[0]:.1f} x {bb[4] - bb[1]:.1f} x {bb[5] - bb[2]:.1f} mm")
     print(f"パネルの傾き {math.degrees(SLOPE):.1f}°")
-    names = {"top_plate": "天板", "marks": "目盛り", "bottom_case": "底ケース", "cap_shell": "ツマミ外殻", "cap_core": "ツマミ芯", "nano_clip": "Nano の押さえ"}
+    names = {"top_plate": "天板", "marks": "目盛り", "bottom_case": "底ケース", "cap_shell": "ツマミ外殻", "cap_core": "ツマミ芯", "nano_clip": "Nano の押さえ", "knob_body": "ノブ", "knob_line": "ノブの指示線"}
     print("フィラメント: " + " / ".join(f"{names[k]}={FILAMENT[v][0]}" for k, v in PART_FILAMENT.items()))
     print(f"天板の厚さ {TOP_T:.1f} mm。四隅のネジ (スナップで足りなければ): M3×{SCREW[0]:g} (なべ / キャップ)、座ぐり Φ{SCREW[1]:g}")
     for x, y, seat, e, rest in screw_report():
