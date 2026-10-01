@@ -1,7 +1,7 @@
 # deej-tab
 
 物理スライダーで、Windows のアプリごとの音量と **Chrome のタブごとの音量** を操作する自作ミキサーです。
-[deej](https://github.com/omriharel/deej) を元に、PC アプリ・Chrome 拡張機能・LED 付きファームウェア・3D プリント用ケースまでまとめてあります。
+[deej](https://github.com/omriharel/deej) を元に、PC アプリ・Chrome 拡張機能・LED 付きファームウェア・3D プリント用ケース（[MakerWorld](https://makerworld.com/models/3382344)）までまとめてあります。
 
 <p align="center"><img src="docs/images/hero.jpg" alt="deej-tab の完成イメージ" width="720"></p>
 <p align="center"><sub>完成イメージ（3D レンダリング）。スライダー 5 本・ノブ 1 つ、外形 126×126mm</sub></p>
@@ -35,7 +35,7 @@
 | マイコン | Arduino Nano 互換ボード（USB Type-C 版。ケースは Mini-USB の Nano には合いません） | 1 |
 | スライダー | Bourns PTL60-15R0-103B2（60mm・10kΩ B カーブ・赤 LED 付き） | 5 |
 | 回転ボリューム | 16mm 型 10kΩ B カーブ（SH16K4B103L20KCCI など。6mm ローレット軸 18 山・軸長 20mm・M7 取付ネジ・回り止め付き） | 1 |
-| ノブ | 3D プリント（MakerWorld のデータ）または市販の 6mm 軸用（ABS-28 など） | 1 |
+| ノブ | 3D プリント（[MakerWorld](https://makerworld.com/models/3382344) のデータ）または市販の 6mm 軸用（ABS-28 など） | 1 |
 | LED 用抵抗 | 180Ω〜1kΩ（1/4W・1/6W など。例：330Ω） | 5 |
 | M2 皿ネジ | M2×4 程度（ケースにスライダーを固定。1 本につき 2 本） | 10 |
 
@@ -99,7 +99,7 @@ D0 / D1 は USB シリアルに使うので空けておきます。
 | <img src="docs/images/case_exploded.jpg" alt="分解図" width="260"> | <img src="docs/images/case_knobs.jpg" alt="スライダーのツマミ" width="260"> | <img src="docs/images/case_top.jpg" alt="上から" width="260"> |
 | 天板・底ケース・Arduino Nano 固定クリップの 3 部品＋ツマミ | 黒い外殻と白い芯の 2 色。LED の光で白い線が光ります | 目盛りと番号は彫り。塗料を流し込んで色を付けます |
 
-**MakerWorld：**（準備中）
+**MakerWorld：** [deej-tab Volume Mixer (5 faders + knob, LED)](https://makerworld.com/models/3382344)
 
 寸法を変えたいときは `case/case.py` の先頭の設定を書き換えて作り直せます（下の「ソースから動かす」）。
 
