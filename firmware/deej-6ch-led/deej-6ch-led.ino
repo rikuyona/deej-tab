@@ -22,7 +22,7 @@ const int NUM_LEDS = 5;
 const int analogInputs[NUM_SLIDERS] = {A0, A1, A2, A3, A4, A5};
 const int ledPins[NUM_LEDS] = {3, 5, 6, 9, 10};
 
-// ---- 光り方の数値の既定値 (仮スライダーの「LED 実験」→「書き出す」で出る行をここに貼る) ----
+// ---- 光り方の数値の既定値 (app/leds.py の PARAMS と同じ) ----
 // deej-tab の設定画面で変えた数値は @P で届き、EEPROM に保存したものがこれより優先される
 long DIM = 20;             // 普段の明るさ (0〜255)
 long BRIGHT = 255;         // 操作した直後

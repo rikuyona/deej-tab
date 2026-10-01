@@ -588,12 +588,6 @@ class LedSimTest(unittest.TestCase):
         self.assertEqual(leds.led_brightness(1000, 1023, 900, 0, p=p), 255)
         self.assertEqual(leds.led_brightness(1000, 511, 900, 0, p=p), 127)
 
-    def test_firmware_constants(self):
-        text = leds.firmware_constants(dict(leds.PARAMS, DIM=33, FADE_UP=0.25))
-        self.assertIn("long DIM = 33;", text)
-        self.assertIn("long FADE_UP = 25;", text)
-        self.assertEqual(len(text.splitlines()), len(leds.PARAMS))
-
 
 class CalibrationTest(unittest.TestCase):
     """スライダーの端の位置を合わせる (アプリ・LED の分身・Nano への行)"""

@@ -12,7 +12,7 @@ PC → Nano (行の先頭が @。スライダーの値の行とは別):
 
 Nano は 3 秒 PC から何も来なければ、PC なしの時の光り方 (操作したら明るく、0 で消灯) に戻る。
 
-光り方の数値は PARAMS にまとめてある (仮スライダーの「LED 実験」で動かして試せる)。
+光り方の数値は PARAMS にまとめてある (deej-tab の設定画面の「LED の光り方」で変えられる)。
 led_brightness() と LedSim はファームウェアの計算と同じ。直す時はファームウェアも一緒に直す。
 """
 
@@ -447,8 +447,3 @@ def perceived(level):
     """LED の明るさ (PWM 0〜255) を画面に出す時の色の強さ (0〜1)。
     LED は PWM が小さい所でも目には明るく見えるので、画面の明るさに直す (ガンマ 2.2 の逆)"""
     return math.pow(max(0, min(255, level)) / 255.0, 1 / 2.2)
-
-
-def firmware_constants(p):
-    """ファームウェアの既定値に貼る行 (FADE_UP / FADE_DOWN は 100 倍した整数)"""
-    return "\n".join(f"long {k} = {round(p[k] * 100) if k in FLOAT_PARAMS else int(p[k])};" for k in PARAMS)
