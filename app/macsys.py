@@ -267,7 +267,8 @@ class MacAudio:
         return name in self.processes()
 
     def restore(self):
-        """アプリの音量は横取りをやめれば元 (100%) に戻る。全体・マイクは覚えておいた音量に戻す"""
+        """アプリの音量は横取りをやめれば元 (100%) に戻る。全体・マイクは覚えておいた音量に戻す
+        (全体は今のまま。一時停止・終了した瞬間に急に大音量にならないように)"""
         self.volumes, self.others = {}, None
         original, self.original = self.original, {}
         try:
@@ -276,7 +277,9 @@ class MacAudio:
             log.warning("アプリの音量を元に戻せません: %s", e)
         for key, v in original.items():
             try:
-                self.h.request("set_volume", scope="output" if key == ("master",) else "input", value=v)
+                if key == ("master",):
+                    continue
+                self.h.request("set_volume", scope="input", value=v)
             except Exception as e:
                 log.warning("音量を元に戻せません (%s): %s", key, e)
         log.info("音量を元に戻しました")

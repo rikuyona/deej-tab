@@ -239,12 +239,12 @@ class AppTest(unittest.TestCase):
         self.app.set_enabled(False)
         self.assertTrue(self.app.restore_request.is_set())
         self.app._restore(self.audio)
-        self.assertEqual(self.audio.current["master"], 0.8)
+        self.assertEqual(self.audio.current["master"], 0.29)   # 全体の音量は今のまま
         self.assertEqual(self.audio.current["discord.exe"], 0.6)
         # 再開後にまた変えたら、その時の音量を新しく覚える
         self.app.set_enabled(True)
         self.line(0, 500, 500)
-        self.assertEqual(self.audio.original["master"], 0.8)
+        self.assertEqual(self.audio.original["master"], 0.29)
 
     def test_no_restore_when_option_off(self):
         self.c.save(restore_on_pause=False)

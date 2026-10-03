@@ -520,7 +520,7 @@
       </div>
     </div>
     <div class="row">
-      <div class="t">一時停止・終了したら音量を元に戻す<small>Windows・OBS の音量を、deej-tab が変える前に戻します（Chrome のタブはいつも元に戻ります）</small></div>
+      <div class="t">一時停止・終了したら音量を元に戻す<small>アプリ・マイク・OBS の音量を、deej-tab が変える前に戻します（全体の音量はそのまま。Chrome のタブはいつも元に戻ります）</small></div>
       <label class="switch"><input type="checkbox" id="restore" aria-label="一時停止・終了したら音量を元に戻す"><span></span></label>
     </div>
     <div class="row">
@@ -644,8 +644,8 @@ const I18N_EN = {
     'How long the volume takes to catch up when you move a slider quickly. To change one slider, use its ⚙',
   'すぐ': 'Instant', 'なめらか': 'Smooth', 'ゆっくり': 'Slow', 'とてもゆっくり': 'Very slow',
   '一時停止・終了したら音量を元に戻す': 'Restore volumes when paused or closed',
-  'Windows・OBS の音量を、deej-tab が変える前に戻します（Chrome のタブはいつも元に戻ります）':
-    'Restores Windows and OBS volumes to what they were before deej-tab changed them (Chrome tabs are always restored)',
+  'アプリ・マイク・OBS の音量を、deej-tab が変える前に戻します（全体の音量はそのまま。Chrome のタブはいつも元に戻ります）':
+    'Restores app, microphone and OBS volumes to what they were before deej-tab changed them (the master volume is kept as is; Chrome tabs are always restored)',
   'プロファイルを切り替えても音量を飛ばさない': "Don't jump volumes when switching profiles",
   '切り替えたあと、スライダーが今の音量の位置（緑の点線）を通るまで音量を変えません':
     'After switching, a slider takes effect only once it passes the current volume (green dotted line)',
@@ -714,8 +714,8 @@ const I18N_EN = {
   'ログイン時に自動で起動': 'Start at login', 'メニューバーに常駐します': 'Runs in the menu bar',
   'Mac の出力音量': 'Mac output volume',
   'Mac の言語設定に合わせるか、選んだ言語で表示します': 'Follow the Mac language setting, or choose one',
-  'Mac の出力・マイク・OBS の音量を、deej-tab が変える前に戻します（アプリと Chrome のタブはいつも元に戻ります）':
-    'Restores the Mac output, microphone and OBS volumes to what they were before deej-tab changed them (apps and Chrome tabs are always restored)',
+  'Mac のマイク・OBS の音量を、deej-tab が変える前に戻します（出力の音量はそのまま。アプリと Chrome のタブはいつも元に戻ります）':
+    'Restores the Mac microphone and OBS volumes to what they were before deej-tab changed them (the output volume is kept as is; apps and Chrome tabs are always restored)',
   '例: /dev/cu.usbserial-110': 'e.g. /dev/cu.usbserial-110',
   '一覧にないアプリをアプリケーションフォルダから選ぶ…': 'Choose an app from the Applications folder…',
   'アプリを選ぶ (例: discord.app)': 'Choose an app (e.g. discord.app)',
@@ -787,16 +787,16 @@ const MAC_TEXT = {
   'Windows の起動時に自動で起動': 'ログイン時に自動で起動',
   'Windows のマスター音量': 'Mac の出力音量',
   'Windows の表示言語に合わせるか、選んだ言語で表示します': 'Mac の言語設定に合わせるか、選んだ言語で表示します',
-  'Windows・OBS の音量を、deej-tab が変える前に戻します（Chrome のタブはいつも元に戻ります）':
-    'Mac の出力・マイク・OBS の音量を、deej-tab が変える前に戻します（アプリと Chrome のタブはいつも元に戻ります）',
+  'アプリ・マイク・OBS の音量を、deej-tab が変える前に戻します（全体の音量はそのまま。Chrome のタブはいつも元に戻ります）':
+    'Mac のマイク・OBS の音量を、deej-tab が変える前に戻します（出力の音量はそのまま。アプリと Chrome のタブはいつも元に戻ります）',
   '例: COM5': '例: /dev/cu.usbserial-110',
   '一覧にないアプリを exe ファイルから選ぶ…': '一覧にないアプリをアプリケーションフォルダから選ぶ…',
   'アプリを選ぶ (例: valorant.exe)': 'アプリを選ぶ (例: discord.app)',
   'Start with Windows': 'Start at login',
   'Windows master volume': 'Mac output volume',
   'Follow the Windows display language, or choose one': 'Follow the Mac language setting, or choose one',
-  'Restores Windows and OBS volumes to what they were before deej-tab changed them (Chrome tabs are always restored)':
-    'Restores the Mac output, microphone and OBS volumes to what they were before deej-tab changed them (apps and Chrome tabs are always restored)',
+  'Restores app, microphone and OBS volumes to what they were before deej-tab changed them (the master volume is kept as is; Chrome tabs are always restored)':
+    'Restores the Mac microphone and OBS volumes to what they were before deej-tab changed them (the output volume is kept as is; apps and Chrome tabs are always restored)',
   'e.g. COM5': 'e.g. /dev/cu.usbserial-110',
   "Choose an app's exe file…": 'Choose an app from the Applications folder…',
   'Choose an app (e.g. valorant.exe)': 'Choose an app (e.g. discord.app)',
