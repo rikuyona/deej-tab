@@ -23,5 +23,8 @@ pcb/out/
 *.kicad_prl
 fp-info-cache
 
-# 開発用のメモ
+# Claude Code の個人設定 (.claude/CLAUDE.md は共有する)
+.claude/settings.local.json
+
+# 手元の古いメモ (中身は docs/dev/ に移した)
 引き継ぎメモ.md

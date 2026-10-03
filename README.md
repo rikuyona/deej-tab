@@ -8,7 +8,7 @@
 
 ![設定画面：スライダーを動かすと、割り当てた音量がリアルタイムに変わる](docs/images/mixer.gif)
 
-- [できること](#できること) / [必要なもの](#必要なもの) / [セットアップ](#セットアップ) / [使い方](#使い方) / [ソースから動かす](#ソースから動かす) / [仕組み](#仕組み)
+- [できること](#できること) / [必要なもの](#必要なもの) / [セットアップ](#セットアップ) / [使い方](#使い方) / [Mac 版について](#mac-版について) / [仕組み](#仕組み) / [開発](#開発)
 
 ## できること
 
@@ -17,7 +17,7 @@
 - 日本語・英語の画面（English UI）
 - 設定画面で割り当て・スライダーごとの最大音量（100% 超えも可。タブ・OBS のみ）・音量の変わり方を変更
 - プロファイル（割り当て一式）の切り替え。アプリが前に来たら自動で切り替えも可
-- 一時停止（ショートカットも可）。止めると音量を元に戻す
+- 一時停止（ショートカットも可）。止めるとアプリの音量を元に戻す（全体の音量はそのまま）
 - スライダーの LED で状態や音の大きさを表示。光り方は設定画面で選べる
 - config.yaml は deej と互換
 
@@ -103,11 +103,12 @@ Mac の場合は [Mac 版について](#mac-版について) を見てくださ�
 
 **MakerWorld：** [deej-tab Volume Mixer (5 faders + knob, LED)](https://makerworld.com/models/3382344)
 
-寸法を変えたいときは `case/case.py` の先頭の設定を書き換えて作り直せます（下の「ソースから動かす」）。
+寸法を変えたいときは `case/case.py` の先頭の設定を書き換えて作り直せます（[開発ガイド](docs/dev/README.md#ケースを作る)）。
 
 ## 使い方
 
 deej-tab はタスクトレイに常駐します。アイコンをクリックすると設定画面が開きます。右クリックのメニューからは、一時停止・プロファイルの切り替え・自動起動のオン／オフ・終了ができます。
+
 ### ミキサー：スライダーに割り当てる
 
 ![ミキサー](docs/images/mixer.png)
@@ -199,26 +200,6 @@ deej-tab はタスクトレイに常駐します。アイコンをクリック�
 
 設定は `deej-tab.exe` の隣の `config.yaml` に保存されます。手で書き換えても、保存すると自動で読み直します（形式は deej と互換）。
 
-## ソースから動かす
-
-Python 3 が必要です（3.14 で動作確認）。
-
-```bat
-cd app
-start.bat
-```
-
-初回は `.venv` を作って必要なパッケージを入れ、トレイに常駐します。ログを画面で見たいときは `debug.bat`。
-
-| 作業 | コマンド（`app` フォルダで） |
-|---|---|
-| テスト | `.venv\Scripts\python -m unittest discover -s tests -v` |
-| exe を作る | `.venv\Scripts\python build.py` |
-| 配布用 zip を作る | `.venv\Scripts\python ..\tools\release.py --build`（`release/` にできる） |
-
-- ケース：`case` フォルダで `pip install numpy trimesh manifold3d` を入れた venv を作り、`python case.py`。出力は `case/out/`
-- 仮スライダー：`tools/fake_sliders.bat` でコントローラーなしに試せます（config.yaml の `com_port` を `socket://127.0.0.1:9000` に）
-
 ## Mac 版について
 
 Apple シリコン（M1 以降）の Mac 用です。Intel の Mac では動きません。
@@ -246,22 +227,6 @@ Apple シリコン（M1 以降）の Mac 用です。Intel の Mac では動き�
 - ショートカットの Win は Command（⌘）、Alt は Option（⌥）です
 - もう一度 `deej-tab.app` を開いても設定画面は出ません。メニューバーのアイコンから開いてください
 
-### ソースから動かす・作る（Mac）
-
-Xcode のコマンドラインツール（`xcode-select --install`）と Python 3 が必要です（Homebrew の Python 3.12 で確認）。
-
-```sh
-cd app
-python3 -m venv .venv-mac
-.venv-mac/bin/pip install -r requirements-mac.txt
-.venv-mac/bin/python build_mac.py --helper-only   # 補助プログラム (mac/deej-tab-helper.swift) を作る
-.venv-mac/bin/python deej_tab.py --no-tray        # ログを見ながら動かす
-.venv-mac/bin/python build_mac.py                 # deej-tab.app と release/deej-tab-x.y.z-mac.zip を作る
-```
-
-ターミナルから動かすときは、システムオーディオの録音の許可はターミナルに対して求められます。
-エディタや Claude Code など、ターミナル以外から動かすと許可のダイアログが出ないまま、音量を変えたアプリの音が消えることがあります。その時は `build_mac.py` で作った `deej-tab.app` で試してください。
-
 ## 仕組み
 
 ```
@@ -273,6 +238,10 @@ Nano ──USB シリアル──▶ deej-tab.exe ──Windows の音量 API─
 ```
 
 拡張機能はタブの音声をキャプチャしてゲインをかけます。通信は PC の中（127.0.0.1）だけで、外部には何も送りません。
+
+## 開発
+
+ソースから動かす・exe や Mac 版を作る・ファームウェアを書き込む手順と、設計の資料は [開発ガイド](docs/dev/README.md) にまとめています。
 
 ## ライセンス
 
