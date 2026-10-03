@@ -21,6 +21,7 @@
 
 import math
 import os
+import sys
 
 import numpy as np
 import trimesh
@@ -164,6 +165,22 @@ SCREW = (8.0, 6.4)   # 組み立てネジ M3 (なべ / キャップ) の首下�
 COL_WALL = 1.2       # 底ケースの柱の座ぐりまわりの厚さ
 
 FEET = (10.5, 1.0)   # 底板のゴム足の凹み 直径, 深さ
+
+# ================================================================ 基板版 (python case.py --pcb → out/pcb/)
+# スライダー・ボリュームを基板 (pcb/make_pcb.py) に載せ、Nano とはケーブル (JST ZH 電源 3 ピン・LED 6 ピン・信号 6 ピン) でつなぐ版 (2026-10-03)。
+# Nano・USB-C の位置は配線版と同じ。スライダーは爪をやめて M2 の皿ネジで留める (基板があるので本体の下に爪を掛けられない)
+# ボリュームは今の SH16K4 と同じシリーズの基板用 JH16K6B103L20KC-H13 (秋月 117390)。今と同じくナットでパネルに留めるので、
+# パネルの穴・回り止め・ノブ・目盛りは配線版と同じ。本体 (取付面から 9.3) は基板の切り欠きを通り抜け、軸と平行に後ろへ伸びた端子を基板の長穴でハンダ付けする
+PCB = "--pcb" in sys.argv
+PCB_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pcb", "outline.json")   # pcb/make_pcb.py が書く外形とコネクターの位置
+PCB_T = 1.6
+PCB_PLATE_GAP = 0.5                          # 天板の裏と基板の上面のすき間 (スライダー本体の高さ 7.0±0.5 の短い個体でも基板を押さない)
+PCB_SOLDER = 2.4                             # 基板の裏に出る端子とハンダ (基板の下面から)
+JH16K6_LEAD = (13.0, 5.0, 3.4, 13.4, 2.9, 0.4)   # 端子: 軸からの距離 (右), 間隔, 取付面から後ろへ 始まり・終わり, 板の幅, 厚さ (データシートの図から)
+JH16K6_BLOCK = (11.4, 7.6, 2.2, 3.4)         # 端子の付け根の板 (取付面のすぐ後ろ): 軸から右へ, 前後の半幅, 取付面から後ろへ 始まり・終わり
+PCB_TOP_RELIEF = 3.0                         # コネクター・抵抗・コンデンサーの足とハンダが表に出る所の逃げ (天板の裏を彫る深さ)
+PCB_THT = {"150": ("res", 6.5, 2.5), "100nF": ("cap", 3.8, 2.5, 3.8), "10uF": ("cap", 6.5, 2.5, 7.0)}   # 0.1µF は秋月 104065 (RD15F104Z1HL2L)、10µF は秋月 100464 (THD30E-1E106Z) の寸法
+# 裏に付けるスルーホール部品の本体: 抵抗 (寝かせる。長さ, 直径) / コンデンサー (立てる。幅, 厚さ, 基板の下面からの高さ)
 
 SEG = 64
 
@@ -317,8 +334,9 @@ def panel_cuts():
             sink = Manifold.cylinder(1.0, M2_HOLE / 2, M2_HEAD / 2, SEG).translate([0, dy, -1.0 + 0.001])
             cuts.append(on_panel(hole + sink + Manifold.cylinder(1, M2_HEAD / 2, M2_HEAD / 2, SEG).translate([0, dy, 0]), x, SLIDER_Y))
     cuts.append(on_panel(Manifold.cylinder(TOP + 2, POT_HOLE / 2, POT_HOLE / 2, SEG).translate([0, 0, -TOP - 1]), KNOB_X, KNOB_Y))
-    tw, td, tdepth, tr = POT_TAB
-    cuts.append(on_panel(Manifold.cube([tw, td, tdepth + 0.01]).translate([-tw / 2, -tr - td / 2, -TOP - 0.01]), KNOB_X, KNOB_Y))
+    if not PCB:   # 基板版のボリュームは基板で留めるので回り止めは無い
+        tw, td, tdepth, tr = POT_TAB
+        cuts.append(on_panel(Manifold.cube([tw, td, tdepth + 0.01]).translate([-tw / 2, -tr - td / 2, -TOP - 0.01]), KNOB_X, KNOB_Y))
     return Manifold.batch_boolean(cuts, manifold3d.OpType.Add)
 
 
@@ -360,6 +378,8 @@ SLIDER_CLAW = (1.2, 6.0, 0.6, 0.2, 0.8, 22.0, 3.5, 1.1)
 # スライダーの爪: 厚さ, 幅, 本体の下に掛かる量, 本体の下とのすき間, まわりの切り込みの幅, 位置 (本体の中心から前後), 付け根の深さ (パネル上面から), 返しの高さ
 # 本体の高さはデータシート 7.0±0.5。M2 でネジ留めもするので、中間より少し長め (7.2) の本体に掛かる位置にする
 TOP_T = TOP + SLIDER_BODY[2] + SLIDER_CLAW[3] + SLIDER_CLAW[7]   # 天板の厚さ (パネル上面から裏まで)
+if PCB:
+    TOP_T = TOP + SLIDER_BODY[2] - PCB_PLATE_GAP                  # 基板版: 裏が基板の上面から PCB_PLATE_GAP 上
 POCKET_FIT = 0.3                             # くぼみと部品のすき間 (片側)
 SNAP = (7.5, 0.7, 0.4, 0.6, 0.3, 40.0)
 # 天板と底ケースのスナップ: 深さ (パネル上面から), 差し込みの出っ張りの高さ, 出っ張りの先の平らな所, 溝の深さ (壁の内側から), 溝の下側のすき間, 長さ (各辺の中央)
@@ -406,6 +426,20 @@ def pockets():
     bw, bl, _ = SLIDER_BODY
     ps = [on_panel(Manifold.cube([bw + 2 * f, bl + 2 * f, TOP_T + 1]).translate([SLOT_OFFSET - bw / 2 - f, -bl / 2 - f, -TOP_T - 1]), x, SLIDER_Y)
           ^ band_zone(TOP - e, TOP_T + 1) for x in SLIDER_X]
+    if PCB:
+        # ボリューム (JH16K6): 本体と、右の端子の付け根の板・軸と平行に後ろへ伸びる端子の逃げ (どちらも貫通)
+        r = POT_BODY[0] / 2 + f + 0.2
+        lr, lp, l0, l1, lw, lt = JH16K6_LEAD
+        br, bh, b0, b1 = JH16K6_BLOCK
+        hw = max(lp + lw / 2, bh) + f
+        side = Manifold.cube([lr + lt / 2 + 0.5 + f, 2 * hw, TOP_T + 1]).translate([0, -hw, -TOP_T - 1])
+        ps.append(on_panel(Manifold.cylinder(TOP_T + 1, r, r, SEG).translate([0, 0, -TOP_T - 1]) + side, KNOB_X, KNOB_Y) ^ band_zone(TOP - e, TOP_T + 1))
+        # コネクター・抵抗・コンデンサーの足とハンダの逃げ (make_pcb.py が足のまわり 1.5 の四角で書く)
+        info = pcb_info()
+        for x0, v0, x1, v1 in info["reliefs"]:
+            m = Manifold.cube([x1 - x0, v1 - v0, PCB_TOP_RELIEF + 1]).translate([x0, v0 - SLIDER_Y, -TOP_T - 1])
+            ps.append(on_panel(m, 0, SLIDER_Y) ^ band_zone(TOP_T - PCB_TOP_RELIEF, TOP_T + 1))
+        return Manifold.batch_boolean(ps, manifold3d.OpType.Add)
     r = POT_BODY[0] / 2 + f + 0.2          # 回り止めの逃げ (中心から 7.8 + 0.9) も入る大きさ
     pr, pd = POT_BODY[0] / 2, POT_BODY[1]
     lugs = Manifold.cube([pr + 5 + f, 15 + 2 * f, TOP_T + 1]).translate([0, -7.5 - f, -TOP_T - 1])         ^ Manifold.cube([40, 40, pd - 1 + 2 + f]).translate([-20, -20, -TOP - pd + 1 - 1])   # 端子 (右向き、本体の下の方から出る) の逃げ
@@ -450,8 +484,11 @@ def split(s, b):
     top = (outer_solid(PLATE) ^ band_zone(-5, BAND)) + (plan_prism(plug_in) ^ band_zone(TOP, TOP_T + 1))
     bump, groove = snap_profiles()
     top = top + snap_bars(plug_in, bump, SNAP[5], SNAP[0])        # スナップの出っ張り
-    cuts, barbs = slider_claws()
-    top = top - panel_cuts() - groove_ring() - marks_solid(MARK_DEPTH, 1.0) - pockets() - cuts + barbs   # 目盛りの彫り
+    if PCB:   # 基板版は本体の下に基板があるので爪は無し (M2 で留める)
+        top = top - panel_cuts() - groove_ring() - marks_solid(MARK_DEPTH, 1.0) - pockets()   # 目盛りの彫り
+    else:
+        cuts, barbs = slider_claws()
+        top = top - panel_cuts() - groove_ring() - marks_solid(MARK_DEPTH, 1.0) - pockets() - cuts + barbs   # 目盛りの彫り
     tip = TOP_T - SCREW_ENGAGE
     pilots = Manifold.batch_boolean([cyl(x, y, 0, H_BACK + 5, BOSS_PILOT / 2) for x, y in BOSS_POS], manifold3d.OpType.Add)
     top = (top - (pilots ^ band_zone(tip - 0.5, TOP_T + 1))) ^ band_zone(-5, TOP_T)   # 裏の面でまとめて切る
@@ -784,7 +821,8 @@ def knob_shape(grip=None):
                for k in range(n)]
     body = body - Manifold.batch_boolean(grooves, manifold3d.OpType.Add)
     # 底のくぼみ (ナットにかぶさる)。軸のまわりは筒で残す
-    body = body - (Manifold.cylinder(rdepth, rd / 2, rd / 2, SEG) - Manifold.cylinder(rdepth + 1, 4.2, 4.2, SEG)).translate([0, 0, -0.01])
+    if rdepth > 0:
+        body = body - (Manifold.cylinder(rdepth, rd / 2, rd / 2, SEG) - Manifold.cylinder(rdepth + 1, 4.2, 4.2, SEG)).translate([0, 0, -0.01])
     body = body - knob_bore(grip)
     lw, l0, ld = KNOB_LINE
     top_r = r - 1.2
@@ -843,7 +881,10 @@ def slider_parts(x, flip):
         for ox in offsets:
             pins.append(Manifold.cube([0.6, 1.0, SLIDER_PINS]).translate([ox - 0.3, end - 0.5, z_body - SLIDER_PINS]))
         x0, x1 = min(offsets) - 1.2, max(offsets) + 1.2
-        wires.append(Manifold.cube([x1 - x0, 4.0, WIRE_MARGIN]).translate([x0, end - 2.0, z_body - SLIDER_PINS - WIRE_MARGIN]))
+        if PCB:   # 基板版: 基板の裏に出る端子とハンダ
+            wires.append(Manifold.cube([x1 - x0, 2.0, PCB_SOLDER]).translate([x0, end - 1.0, z_body - PCB_T - PCB_SOLDER]))
+        else:
+            wires.append(Manifold.cube([x1 - x0, 4.0, WIRE_MARGIN]).translate([x0, end - 2.0, z_body - SLIDER_PINS - WIRE_MARGIN]))
     pins = Manifold.batch_boolean(pins, manifold3d.OpType.Add)
     wires = Manifold.batch_boolean(wires, manifold3d.OpType.Add)
 
@@ -941,15 +982,18 @@ def parts():
         out.append(("cap_sweep", on_panel(sweep, x, SLIDER_Y)))
         lever = Manifold.cube([lt, lw + TRAVEL, lh]).translate([SLOT_OFFSET - lt / 2, -(lw + TRAVEL) / 2, -TOP])
         out.append(("lever", on_panel(lever, x, SLIDER_Y)))
-    pr, pd = POT_BODY[0] / 2, POT_BODY[1]
-    pot = Manifold.cylinder(pd, pr, pr, SEG).translate([0, 0, -TOP - pd])
-    pot = pot + Manifold.cube([6, 15, 2]).translate([pr - 1, -7.5, -TOP - pd + 1])     # 端子 (右向き)
-    af, nt, wd, wt = NUT
-    nut = Manifold.cylinder(wt, wd / 2, wd / 2, SEG) + Manifold.cylinder(nt, af / math.sqrt(3), af / math.sqrt(3), 6).translate([0, 0, wt])
-    nut = nut - Manifold.cylinder(nt + wt + 1, 3.5, 3.5, SEG).translate([0, 0, -0.5])
-    shaft = Manifold.cylinder(SHAFT - TOP, 3.0, 3.0, SEG)
-    out.append(("pot", on_panel(pot, KNOB_X, KNOB_Y)))
-    out.append(("pot", on_panel(nut + shaft, KNOB_X, KNOB_Y)))
+    if PCB:
+        out += pcb_parts()
+    else:
+        pr, pd = POT_BODY[0] / 2, POT_BODY[1]
+        pot = Manifold.cylinder(pd, pr, pr, SEG).translate([0, 0, -TOP - pd])
+        pot = pot + Manifold.cube([6, 15, 2]).translate([pr - 1, -7.5, -TOP - pd + 1])     # 端子 (右向き)
+        af, nt, wd, wt = NUT
+        nut = Manifold.cylinder(wt, wd / 2, wd / 2, SEG) + Manifold.cylinder(nt, af / math.sqrt(3), af / math.sqrt(3), 6).translate([0, 0, wt])
+        nut = nut - Manifold.cylinder(nt + wt + 1, 3.5, 3.5, SEG).translate([0, 0, -0.5])
+        shaft = Manifold.cylinder(SHAFT - TOP, 3.0, 3.0, SEG)
+        out.append(("pot", on_panel(pot, KNOB_X, KNOB_Y)))
+        out.append(("pot", on_panel(nut + shaft, KNOB_X, KNOB_Y)))
     kb, kl = knob_shape()
     out.append(("knob", on_panel(kb.rotate([0, 0, knob_turn()]).translate([0, 0, knob_lift()]), KNOB_X, KNOB_Y)))
     nano, nano_wires, _ = nano_parts()
@@ -957,6 +1001,71 @@ def parts():
     out.append(("nano_wires", nano_wires))
     out.append(("nano_clip", nano_clip()))
     return out
+
+
+def pcb_info():
+    """pcb/make_pcb.py が書いた基板の外形 (X, V) とコネクター J1 の 1 番の端子の位置"""
+    import json
+    with open(PCB_JSON, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def pcb_parts():
+    """基板版の部品: 基板、ボリューム (JH16K6)、裏の部品 (コネクター・抵抗・コンデンサー)、裏に出る端子とハンダ、表に出るコネクターの端子。
+    基板の上の座標 (X, V) は pcb/make_pcb.py と同じ。基板の上面はパネル上面から TOP + スライダー本体の高さ"""
+    info = pcb_info()
+    zt = -(TOP + SLIDER_BODY[2])                 # 基板の上面 (パネル座標)
+    zb = zt - PCB_T
+
+    def put(m):                                  # 基板の上の座標 (X, V - SLIDER_Y) で作った形をケースへ
+        return on_panel(m, 0, SLIDER_Y)
+
+    def bx(x0, v0, x1, v1, z0, z1):
+        return Manifold.cube([x1 - x0, v1 - v0, z1 - z0]).translate([x0, v0 - SLIDER_Y, z0])
+
+    board = put(Manifold.extrude(CrossSection([[(x, v - SLIDER_Y) for x, v in info["outline"]]]), PCB_T).translate([0, 0, zb]))
+    kv = SLIDER_Y + (KNOB_Y - SLIDER_Y) / math.cos(SLOPE)     # ボリュームの軸の V
+    # ボリューム: 配線版と同じ本体・ナット・軸 (パネルに留める) と、端子の付け根の板
+    pr, pd = POT_BODY[0] / 2, POT_BODY[1]
+    af, nt, wd, wt = NUT
+    nut = Manifold.cylinder(wt, wd / 2, wd / 2, SEG) + Manifold.cylinder(nt, af / math.sqrt(3), af / math.sqrt(3), 6).translate([0, 0, wt])
+    nut = nut - Manifold.cylinder(nt + wt + 1, 3.5, 3.5, SEG).translate([0, 0, -0.5])
+    br, bh, b0, b1 = JH16K6_BLOCK
+    pot = Manifold.cylinder(pd, pr, pr, SEG).translate([0, 0, -TOP - pd]) + Manifold.cylinder(SHAFT - TOP, 3.0, 3.0, SEG) + nut
+    pot = pot + Manifold.cube([br, 2 * bh, b1 - b0]).translate([0, -bh, -TOP - b1])
+    # 端子 (軸と平行に後ろへ伸びる板。基板を貫通する)
+    lr, lp, l0, l1, lw, lt = JH16K6_LEAD
+    leads = [Manifold.cube([lt, lw, l1 - l0]).translate([lr - lt / 2, dv - lw / 2, -TOP - l1]) for dv in (-lp, 0, lp)]
+    under = []                                   # 裏の部品 (抵抗・コンデンサーの本体とコネクター)
+    pins = []
+    for ref, val, ax, av, bxx, bv in info["parts"]:
+        kind, *dim = PCB_THT[val]
+        mx, mv = (ax + bxx) / 2, (av + bv) / 2
+        along_v = abs(bv - av) > abs(bxx - ax)
+        if kind == "res":                        # 寝かせた抵抗 (足の向きに沿った円柱)
+            ln, dia = dim
+            cylv = Manifold.cylinder(ln, dia / 2, dia / 2, 24).rotate([-90, 0, 0] if along_v else [0, 90, 0])
+            cylv = cylv.translate([mx, mv - SLIDER_Y - ln / 2, zb - dia / 2] if along_v else [mx - ln / 2, mv - SLIDER_Y, zb - dia / 2])
+            under.append(cylv)
+        else:                                    # 立てたコンデンサー (幅は足の並びの向き)
+            w, t, h = dim
+            hx, hv = (t / 2, w / 2) if along_v else (w / 2, t / 2)
+            under.append(bx(mx - hx, mv - hv, mx + hx, mv + hv, zb - h, zb))
+        for px, pv in ((ax, av), (bxx, bv)):     # 表に出る足とハンダ
+            pins.append(bx(px - 1.0, pv - 1.0, px + 1.0, pv + 1.0, zt, zt + 1.5))
+    end, mouth, back, ch = info["conn_body"]     # JST ZH 横向き: 端の端子からの張り出し, 口の側, 反対の側, 高さ
+    for ci in info["conns"]:
+        c0, cv, span = ci["x"], ci["v"], ci["pitch"] * (ci["n"] - 1)
+        if ci["way"] == "front":                 # 端子は X に並び、口は手前。コードは基板の下を手前へ
+            under.append(bx(c0 - end, cv - mouth, c0 + span + end, cv + back, zb - ch, zb))
+            under.append(bx(c0 - end + 0.5, cv - mouth - 8.0, c0 + span + end - 0.5, cv - mouth, zb - ch + 0.5, zb - 0.5))
+            pins.append(bx(c0 - 1.0, cv - 1.0, c0 + span + 1.0, cv + 1.0, zt, zt + 2.0))
+        else:                                    # 端子は V に並び、口は右 (Nano)。差したハウジングは口の右 4mm
+            under.append(bx(c0 - back, cv - end, c0 + mouth, cv + span + end, zb - ch, zb))
+            under.append(bx(c0 + mouth, cv - end + 0.5, c0 + mouth + 4.0, cv + span + end - 0.5, zb - ch + 0.5, zb - 0.5))
+            pins.append(bx(c0 - 1.0, cv - 1.0, c0 + 1.0, cv + span + 1.0, zt, zt + 2.0))
+    return [("pcb", board), ("pot", on_panel(pot, KNOB_X, KNOB_Y)), ("pcb_parts", put(Manifold.batch_boolean(under, manifold3d.OpType.Add))),
+            ("pcb_pins", put(Manifold.batch_boolean(pins, manifold3d.OpType.Add)) + on_panel(Manifold.batch_boolean(leads, manifold3d.OpType.Add), KNOB_X, KNOB_Y))]
 
 
 def gap_report(part_list):
@@ -997,7 +1106,8 @@ def check(shell_m, bottom_m, part_list):
                 continue
             elif pair <= {"slider", "pins", "wires"} and len(pair) > 1:
                 continue  # 同じスライダーの本体と端子は重なってよい
-                continue
+            elif "pcb" in pair and pair & {"pins", "wires", "pcb_pins"}:
+                continue  # 端子は基板を貫通する (ボリュームの本体は基板の切り欠きを通るので、基板とは比べる)
             v = (a ^ b).volume()
             if v > 0.01:
                 ok = False
@@ -1053,7 +1163,7 @@ def export_viewer(shell_m, bottom_m, part_list, out):
     colors = {"shelltop": fc["top_plate"], "marks": fc["marks"], "bottom": fc["bottom_case"], "slider": [190, 190, 184], "pins": [200, 170, 90], "lever": [28, 28, 30],
               "cap": fc["cap_shell"], "capcore": fc["cap_core"], "line": fc["knob_line"], "pot": [180, 180, 180], "knob": fc["knob_body"],
               "nano": [22, 78, 160], "nano_clip": fc["nano_clip"], "nano_pad": [214, 178, 90], "nano_ic": [26, 26, 28], "nano_metal": [205, 207, 212],
-              "nano_btn": [235, 235, 230], "nano_led": [250, 250, 245]}
+              "nano_btn": [235, 235, 230], "nano_led": [250, 250, 245], "pcb": [36, 112, 66], "pcb_parts": [45, 45, 48], "pcb_pins": [200, 170, 90]}
     scene = trimesh.Scene()
     items = [("shelltop", shell_m), ("marks", marks_solid(MARK_DEPTH)), ("bottom", bottom_m)] + part_list
     for k, (name, m) in enumerate(items):
@@ -1146,8 +1256,9 @@ addEventListener('resize', () => { cam.aspect = innerWidth / innerHeight; cam.up
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    out = os.path.join(here, "out")
+    out = os.path.join(here, "out", "pcb") if PCB else os.path.join(here, "out")
     os.makedirs(out, exist_ok=True)
+    print("基板版 (スライダー・ボリュームを基板に載せる)" if PCB else "配線版")
 
     top, base = split(shell(), bottom())
     p = parts()
@@ -1193,6 +1304,8 @@ def main():
     print(f"天板の厚さ {TOP_T:.1f} mm。四隅のネジ (スナップで足りなければ): M3×{SCREW[0]:g} (なべ / キャップ)、座ぐり Φ{SCREW[1]:g}")
     for x, y, seat, e, rest in screw_report():
         print(f"  ({x:.1f}, {y:.1f}) {'手前' if y < D / 2 else '奥'}: 座ぐりの深さ {seat:.1f}mm / 天板へのかかり {e:.1f}mm / 座面の上の柱 {rest:.1f}mm")
+    if PCB:
+        print(f"スライダーは M2 の皿ネジ 10 本で天板に留める (パネル {TOP:g}mm + スライダーへ約 2mm → M2×4)。ノブの底はパネルから {knob_lift():.1f}mm、軸穴の深さ {KNOB_BORE:.1f}mm")
 
 
 if __name__ == "__main__":

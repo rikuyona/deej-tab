@@ -18,5 +18,10 @@ app/config.yaml
 case/out/
 case.zip
 
+# 基板の出力 (ガーバー・BOM など。pcb/make_pcb.py で作り直せる) と KiCad の個人設定
+pcb/out/
+*.kicad_prl
+fp-info-cache
+
 # 開発用のメモ
 引き継ぎメモ.md
