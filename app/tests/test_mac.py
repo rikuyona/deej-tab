@@ -92,7 +92,8 @@ class MacAudioTest(unittest.TestCase):
         self.assertEqual(self.audio.get_master(), 0.2)
         self.audio.restore()
         st = self.state()
-        self.assertEqual((st["output"], st["input"], st["gains"]), (0.5, 0.8, {}))
+        # 全体は今のまま (0.5 には戻さない)。マイクは前の音量に戻す
+        self.assertEqual((st["output"], st["input"], st["gains"]), (0.2, 0.8, {}))
         self.assertEqual(self.audio.get_process("discord.app"), 1.0)
 
     def test_peaks(self):

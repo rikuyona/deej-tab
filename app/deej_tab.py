@@ -34,7 +34,7 @@ import leds
 
 log = logging.getLogger("deej-tab")
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 LINE_RE = re.compile(r"^\d{1,4}(\|\d{1,4})*$")
 # コントローラーの ID の行 (ファームウェア deej-6ch-led 1.3 以降): @ID|名前|版|8 桁の 16 進
@@ -190,7 +190,7 @@ CONFIG_HEADER = """\
 #   0: [12, 1008]  生の値 12 以下を 0%、1008 以上を 100% にする。書いていないスライダーは 0〜1023。
 #   プロファイルを切り替えても変わらない。Nano にも送り、LED も同じ範囲で動く
 # glide: 0.3  音量がスライダーについてくるまでの時間 (秒、全スライダー)。0 ならすぐ (目標の 95% まで近づく時間)
-# restore_on_pause: 一時停止・終了した時に、Windows と OBS の音量を deej-tab が変える前に戻す
+# restore_on_pause: 一時停止・終了した時に、Windows (全体の音量以外) と OBS の音量を deej-tab が変える前に戻す
 # pickup: プロファイルを切り替えた時、スライダーが今の音量の位置を通るまで効かせない (音量が飛ばない)
 # hotkeys.pause: 一時停止のショートカット (例: ctrl+alt+p)
 # language: 画面の言語 auto (Windows の表示言語に合わせる) / ja / en
@@ -683,13 +683,13 @@ class WindowsAudio:
         return any(True for _ in self._matching({name}))
 
     def restore(self):
-        """覚えておいた「deej-tab が変える前」の音量に戻して、覚えたものは消す"""
+        """覚えておいた「deej-tab が変える前」の音量に戻して、覚えたものは消す。
+        全体の音量は今のまま (一時停止・終了した瞬間に急に大音量にならないように)"""
         original, self.original = self.original, {}
+        original.pop(("master",), None)
         for key, v in original.items():
             try:
-                if key == ("master",):
-                    self._endpoint(self.AudioUtilities.GetSpeakers()).SetMasterVolumeLevelScalar(v, None)
-                elif key == ("mic",):
+                if key == ("mic",):
                     self._endpoint(self.AudioUtilities.GetMicrophone()).SetMasterVolumeLevelScalar(v, None)
                 else:
                     for s, _ in self._matching({key[1]}):
@@ -847,7 +847,8 @@ class DummyAudio:
     def restore(self):
         original, self.original = self.original, {}
         for k, v in original.items():
-            self.current[k] = v
+            if k != "master":   # 全体の音量は今のまま
+                self.current[k] = v
         self.calls.append(("restore", dict(original)))
 
     def peak_master(self):
@@ -1432,7 +1433,7 @@ class DeejTab:
 
     def set_enabled(self, enabled):
         """スライダー操作の有効/一時停止 (設定画面・トレイ・ホットキーから)。
-        一時停止中は Chrome のタブが元の音量 (100%) に戻る。restore_on_pause なら Windows・OBS の音量も戻す"""
+        一時停止中は Chrome のタブが元の音量 (100%) に戻る。restore_on_pause なら Windows (全体の音量以外)・OBS の音量も戻す"""
         with self.config_lock:
             if self.config.enabled == enabled:
                 return
