@@ -23,7 +23,7 @@ let slots = [];     // config.yaml に書かれた tab.N の N
 let values = {};    // { slot: 音量 (1 = 100%。上限を上げたスライダーは 1 を超える) }
 const injected = new Map(); // 方式X: tabId -> スクリプト注入の Promise
 const popups = new Set();   // 開いているポップアップの Port
-const currentTouched = new Set(); // A4 (表示中のタブ) で音量を変えたタブ (一時停止の時に戻す)
+const currentTouched = new Map(); // A4 (表示中のタブ) で音量を変えたタブ -> かけた音量 (一時停止の時に戻す・再読み込みでかけ直す)
 
 // 100% までは 2 乗のカーブ、超えた分はそのまま (200% = 2 倍)。1 でつながる
 const toGain = (v) => {
@@ -240,7 +240,7 @@ function setEnabled(on) {
   enabled = on;
   for (const s of Object.keys(assignments)) applySlot(Number(s));
   if (!on) {
-    for (const t of currentTouched) resetMedia(t);
+    for (const t of currentTouched.keys()) resetMedia(t);
     currentTouched.clear();
   }
   updateIcon();
@@ -254,8 +254,9 @@ async function applyCurrentTab(value) {
   if (!enabled) return;
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || slotOf(tab.id) !== undefined) return;
-  currentTouched.add(tab.id);
-  setMediaVolume(tab.id, toMediaVolume(value));
+  const volume = toMediaVolume(value);
+  currentTouched.set(tab.id, volume);
+  setMediaVolume(tab.id, volume);
 }
 
 async function setMediaVolume(tabId, volume) {
@@ -268,16 +269,17 @@ function resetMedia(tabId) {
   chrome.tabs.sendMessage(tabId, { type: 'deej-reset' }).catch(() => {});
 }
 
-// 注入中に届いた音量も、注入が終わってから順に送る (同じ Promise を待たせる)
+// 注入中に届いた音量も、注入が終わってから順に送る (同じ Promise を待たせる)。
+// media-guard.js はページ側 (MAIN world) で volume を横取りし、content-media.js が音量を渡す
 function ensureInjected(tabId) {
   if (!injected.has(tabId)) {
-    injected.set(tabId, chrome.scripting.executeScript({
-      target: { tabId, allFrames: true },
-      files: ['content-media.js'],
-    }).then(() => true, () => {
-      injected.delete(tabId); // chrome:// など注入できないページ
-      return false;
-    }));
+    const target = { tabId, allFrames: true };
+    injected.set(tabId, chrome.scripting.executeScript({ target, files: ['media-guard.js'], world: 'MAIN' })
+      .then(() => chrome.scripting.executeScript({ target, files: ['content-media.js'] }))
+      .then(() => true, () => {
+        injected.delete(tabId); // chrome:// など注入できないページ
+        return false;
+      }));
   }
   return injected.get(tabId);
 }
@@ -383,6 +385,10 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   // 方式X: ページ移動で注入が消えるので入れ直す
   if (info.status === 'loading') injected.delete(tabId);
   await ready;
+  // A4 で下げたタブを再読み込みした: ページが変わって音量が元に戻っているので、かけ直す
+  if (info.status === 'complete' && enabled && currentTouched.has(tabId) && slotOf(tabId) === undefined) {
+    setMediaVolume(tabId, currentTouched.get(tabId));
+  }
   const slot = slotOf(tabId);
   if (slot === undefined) return;
   if (info.status === 'complete') {

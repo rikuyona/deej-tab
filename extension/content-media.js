@@ -1,58 +1,22 @@
-// 方式X: ページ内の <video>/<audio> の音量を直接変える
+// 方式X の拡張機能側: background.js から届いた音量を、ページ側の media-guard.js に渡す。
+// 音量をかけるのは media-guard.js (ページの volume を横取りしないと、サイトが入れ直した時に一瞬元の音量で鳴る)
 (() => {
   if (window.__deejTabVol) return;
   window.__deejTabVol = true;
-  const original = new WeakMap(); // 触る前の音量 (解除時に戻す)
-  let target = null;              // null = 制御していない
-  let applying = false;
 
-  const apply = (el) => {
-    if (target === null) return;
-    if (!original.has(el)) original.set(el, el.volume);
-    if (Math.abs(el.volume - target) > 0.001) {
-      applying = true;
-      el.volume = target;
-      applying = false;
-    }
-  };
-  const applyAll = () => document.querySelectorAll('video, audio').forEach(apply);
-
-  const reset = () => {
-    target = null;
-    document.querySelectorAll('video, audio').forEach((el) => {
-      if (original.has(el)) { el.volume = original.get(el); original.delete(el); }
-    });
-  };
-
-  // サイト側が音量を戻したら、スライダーの値で上書きし直す
-  const onVolumeChange = (e) => {
-    if (!applying && e.target instanceof HTMLMediaElement) apply(e.target);
-  };
-  const onPlay = (e) => {
-    if (e.target instanceof HTMLMediaElement) apply(e.target);
-  };
-  document.addEventListener('volumechange', onVolumeChange, true);
-  document.addEventListener('play', onPlay, true);
-  const observer = new MutationObserver(applyAll);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  // null を渡すと元の音量に戻して制御をやめる
+  const send = (volume) => document.dispatchEvent(new CustomEvent('__deej_tab_volume', { detail: volume }));
 
   const onMessage = (msg) => {
-    if (msg.type === 'deej-volume') {
-      target = msg.volume;
-      applyAll();
-    } else if (msg.type === 'deej-reset') {
-      reset();
-    }
+    if (msg.type === 'deej-volume') send(msg.volume);
+    else if (msg.type === 'deej-reset') send(null);
   };
   chrome.runtime.onMessage.addListener(onMessage);
 
-  // 拡張機能が再読み込み・削除されても、このスクリプトはページに残って音量を上書きし続ける。
+  // 拡張機能が再読み込み・削除されても、ページ側は音量を抑え続ける。
   // Port の切断で検知して、元の音量に戻してから止まる (再注入もできるようにする)
   const shutdown = () => {
-    reset();
-    document.removeEventListener('volumechange', onVolumeChange, true);
-    document.removeEventListener('play', onPlay, true);
-    observer.disconnect();
+    send(null);
     try { chrome.runtime.onMessage.removeListener(onMessage); } catch {}
     window.__deejTabVol = false;
   };
