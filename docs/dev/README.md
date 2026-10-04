@@ -107,4 +107,5 @@ deej-tab が起動中だと COM ポートが開けないので、先に終了し
   2. `tools/release.py --build` で Windows 版・拡張機能・ファームウェアの zip を `release/` に作る
   3. Mac で `build_mac.py` を実行して Mac 版の zip を作る
   4. main にコミットしてタグ `vX.Y.Z` を push し、GitHub の Releases に zip を載せる（ノートは日本語と英語の両方）
+- 拡張機能だけを直した時は、タグを `extension-vX.Y.Z` にし、アプリ・Mac 版・ファームウェアは前の版の zip をそのまま一緒に載せる（Latest からすべて揃うように）
 - ケース・ツマミの STL は Releases ではなく [MakerWorld](https://makerworld.com/models/3382344) で配っています
