@@ -37,7 +37,8 @@ async function act(msg, button) {
   if (button) button.disabled = true;
   try {
     const res = await chrome.runtime.sendMessage(msg);
-    showError(res?.ok ? '' : (res?.error || t('errFailed')));
+    // 返事がない = 古い Service Worker のまま (拡張機能を更新したが再読み込みしていない)
+    showError(res === undefined ? t('errNoResponse') : res.ok ? '' : (res.error || t('errFailed')));
   } catch (e) {
     showError(String(e?.message || e));
   } finally {
