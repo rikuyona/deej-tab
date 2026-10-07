@@ -11,6 +11,7 @@ deej-tab をソースから動かす・作る・配布するための資料で�
 | [extension.md](extension.md) | Chrome 拡張機能（タブの音量の変え方、割り当て、通信） |
 | [mac.md](mac.md) | Mac 版（補助プログラム、Process Tap、Windows 版との違い） |
 | [case.md](case.md) | 3D プリントのケースとツマミ（`case/case.py`） |
+| [pcb.md](pcb.md) | 基板版（スライダーを 1 枚の基板に載せる。未検証） |
 | [wording.md](wording.md) | 画面に出す文言のルール |
 | [status.md](status.md) | 版の履歴・未確認のこと |
 
@@ -37,6 +38,7 @@ Nano ──USB シリアル──▶ deej-tab ──OS の音量 API──▶ �
 | `extension/` | Chrome 拡張機能（Manifest V3） |
 | `firmware/deej-6ch-led/` | Arduino Nano 用ファームウェア |
 | `case/` | ケース・ツマミの 3D データを作るスクリプト |
+| `pcb/` | 基板版の KiCad データと、それを作るスクリプト（[pcb/README.md](../../pcb/README.md)） |
 | `tools/` | 仮スライダー・拡張機能のアイコン作り・配布用 zip 作り |
 | `docs/` | README の画像と、この開発資料 |
 
@@ -108,4 +110,5 @@ deej-tab が起動中だと COM ポートが開けないので、先に終了し
   3. Mac で `build_mac.py` を実行して Mac 版の zip を作る
   4. main にコミットしてタグ `vX.Y.Z` を push し、GitHub の Releases に zip を載せる（ノートは日本語と英語の両方）
 - 拡張機能だけを直した時は、タグを `extension-vX.Y.Z` にし、アプリ・Mac 版・ファームウェアは前の版の zip をそのまま一緒に載せる（Latest からすべて揃うように）
+- 基板版のガーバーと部品の一覧は、タグ `pcb-vX.Y.Z` のプレリリースに載せる（Latest にしない。アプリ・拡張機能の Latest からすべて揃うように）。実物で確かめたらプレリリースを外す
 - ケース・ツマミの STL は Releases ではなく [MakerWorld](https://makerworld.com/models/3382344) で配っています
