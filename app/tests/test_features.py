@@ -246,6 +246,39 @@ class AppTest(unittest.TestCase):
         self.line(0, 500, 500)
         self.assertEqual(self.audio.original["master"], 0.29)
 
+    # ---------- 受信の乱れ・跳ね (一瞬の爆音の診断) ----------
+
+    def test_odd_line_dropped_until_repeated(self):
+        self.c.save(mapping={0: ["master"], 1: ["discord.exe"]})
+        self.line(100, 100, 100)
+        self.audio.calls.clear()
+        # 途中で切れた行 (本数が違う) は使わない。値がずれて別のスライダーの音量にならないように
+        with self.assertLogs(d.log, "WARNING"):
+            self.line(1000, 100)
+        self.assertEqual(self.audio.calls, [])
+        self.line(100, 100, 100)
+        self.assertEqual(self.audio.calls, [])
+        # 本当に本数が変わった (別のコントローラー) なら、2 行続いた所から使う
+        self.line(500, 500)
+        self.line(500, 500)
+        self.assertIn(("master", 0.48), self.audio.calls)
+
+    def test_jump_logged_and_spike_noted(self):
+        self.line(100, 100, 100)
+        with self.assertLogs(d.log, "INFO") as cm:
+            self.line(100, 900, 100)
+            self.line(100, 110, 100)
+        out = "\n".join(cm.output)
+        self.assertIn("跳ねました 2 (", out)
+        self.assertIn("100|100|100 → 100|900|100", out)
+        self.assertIn("1 行だけ跳ねて戻りました: 100 → 900 → 110", out)
+
+    def test_small_moves_not_logged(self):
+        self.line(100, 100, 100)
+        with self.assertNoLogs(d.log, "INFO"):
+            for v in range(110, 400, 20):
+                self.line(v, 100, 100)
+
     def test_no_restore_when_option_off(self):
         self.c.save(restore_on_pause=False)
         self.line(0, 300, 300)
