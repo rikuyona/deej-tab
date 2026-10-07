@@ -11,6 +11,7 @@ const CURVE_POWER = 2;
 const MAX_GAIN = 4;
 const RETRY_MS = 2000;          // deej-tab が起動していない間の確認間隔
 const POPUP_VALUES_MS = 50;     // ポップアップへスライダー値を送る最短間隔
+const AUTO_DELAY_MS = 1000;     // 自動割り当て: この間鳴り続けたタブだけ割り当てる (通知音などを拾わない)
 const LED = '#ff4d4d';          // 実機のスライダー LED の赤 (設定画面と同じ)
 
 const ICON_ON = { 16: 'icons/icon16.png', 32: 'icons/icon32.png' };
@@ -42,14 +43,18 @@ const slotGain = (slot) => (enabled && values[slot] !== undefined ? toGain(value
 
 let assignments = {}; // { slot: tabId }
 let method = 'Y';     // 既定は Y (X は Web Audio 等の音が残り、0 で無音にならないサイトがある)
+let autoAssign = false;       // 音が鳴ったタブを空いているスロットに自動で割り当てる
+let autoSlots = new Set();    // 自動で割り当てたスロット。方式Yでも方式Xで変える (方式Yは自動ではキャプチャできない)
 
 const ready = (async () => {
-  const [{ assignments: a = {} }, { method: m = 'Y' }] = await Promise.all([
-    chrome.storage.session.get('assignments'),
-    chrome.storage.local.get('method'),
+  const [{ assignments: a = {}, autoSlots: as = [] }, { method: m = 'Y', autoAssign: aa = false }] = await Promise.all([
+    chrome.storage.session.get(['assignments', 'autoSlots']),
+    chrome.storage.local.get(['method', 'autoAssign']),
   ]);
   assignments = a;
+  autoSlots = new Set(as.map(String));
   method = m;
+  autoAssign = aa;
   await loadLang();
   await reconcile();
   for (const [s, t] of Object.entries(assignments)) setBadge(t, s);
@@ -57,7 +62,7 @@ const ready = (async () => {
 
 const saveAssignments = () => {
   reportAssigned();
-  return chrome.storage.session.set({ assignments });
+  return chrome.storage.session.set({ assignments, autoSlots: [...autoSlots] });
 };
 // deej-tab に、タブを割り当て済みのスロットを伝える (割り当てのないスライダーの LED を暗くするため)
 function reportAssigned() {
@@ -70,6 +75,8 @@ const slotOf = (tabId) => {
   const e = Object.entries(assignments).find(([, t]) => t === tabId);
   return e && Number(e[0]);
 };
+// そのスロットの音量の変え方。自動で割り当てたタブは方式Yでも方式X
+const slotMethod = (slot) => (method === 'X' || autoSlots.has(String(slot)) ? 'X' : 'Y');
 
 // 割り当ての変更は1つずつ順に行う (ポップアップの連打やタブを閉じた通知と重ならないように)
 let queue = Promise.resolve();
@@ -89,9 +96,10 @@ async function reconcile() {
   let changed = false;
   for (const [s, t] of Object.entries(assignments)) {
     const exists = await chrome.tabs.get(t).then(() => true, () => false);
-    if (!exists || (live && !live.has(s))) {
+    if (!exists || (live && !live.has(s) && !autoSlots.has(s))) {
       if (exists) clearBadge(t);
       delete assignments[s];
+      autoSlots.delete(s);
       changed = true;
     }
   }
@@ -225,7 +233,7 @@ connect();
 function applySlot(slot) {
   const tabId = assignments[slot];
   if (tabId === undefined) return;
-  if (method === 'X') {
+  if (slotMethod(slot) === 'X') {
     if (enabled && values[slot] !== undefined) setMediaVolume(tabId, toMediaVolume(values[slot]));
     else if (!enabled) resetMedia(tabId);
   } else if (!enabled || values[slot] !== undefined) {
@@ -318,21 +326,26 @@ function explain(e) {
 async function release(slot) {
   const tabId = assignments[slot];
   if (tabId === undefined) return;
+  const m = slotMethod(slot);
   delete assignments[slot];
+  autoSlots.delete(String(slot));
   clearBadge(tabId);
-  if (method === 'X') resetMedia(tabId);
+  if (m === 'X') resetMedia(tabId);
   else await toOffscreen({ type: 'capture-stop', slot });
 }
 
-async function assign(slot, tabId) {
+// auto: 音が鳴ったので自動で割り当てる。拡張機能を呼び出していないのでキャプチャは使えない
+async function assign(slot, tabId, auto = false) {
   const from = slotOf(tabId);
   if (from === slot) return;
   if (assignments[slot] !== undefined) await release(slot); // このスロットの前のタブ
   // A4 (表示中のタブ) で下げていた音量は戻してから、スロットの音量で操作する
   resetMedia(tabId);
   currentTouched.delete(tabId);
-  if (method === 'Y') {
-    if (from !== undefined) {
+  // 自動で割り当てたタブを手で移す時は、ここでキャプチャを始める (方式Yに切り替わる)
+  const fromX = from !== undefined && slotMethod(from) === 'X';
+  if (method === 'Y' && !auto) {
+    if (from !== undefined && !fromX) {
       // 別のスロットから移すだけなら、キャプチャはそのまま使う
       const res = await toOffscreen({ type: 'capture-move', from, to: slot });
       if (!res?.ok) throw new Error(t('errMove'));
@@ -346,8 +359,12 @@ async function assign(slot, tabId) {
       if (!res?.ok) throw new Error(res?.error || t('errStart'));
     }
   }
-  if (from !== undefined) delete assignments[from];
+  if (from !== undefined) {
+    delete assignments[from];
+    autoSlots.delete(String(from));
+  }
   assignments[slot] = tabId;
+  if (auto && method === 'Y') autoSlots.add(String(slot));
   await saveAssignments();
   setBadge(tabId, slot);
   applySlot(slot);
@@ -369,9 +386,43 @@ async function setMethod(m) {
   await chrome.storage.local.set({ method });
 }
 
+async function setAutoAssign(on) {
+  autoAssign = !!on;
+  await chrome.storage.local.set({ autoAssign });
+}
+
+// ---------------------------------------------------------------- 自動割り当て
+// 音が鳴り始めたタブを、空いている一番小さいスロットへ。空きがなければ何もしない (追い出さない)。
+// 止まっても割り当ては残し、閉じた時に外す
+const autoTimers = new Map(); // tabId -> 鳴り続けているかを確かめるタイマー
+
+function onAudible(tabId) {
+  if (!autoAssign || autoTimers.has(tabId)) return;
+  autoTimers.set(tabId, setTimeout(() => {
+    autoTimers.delete(tabId);
+    serial(async () => {
+      if (!autoAssign || !enabled || slotOf(tabId) !== undefined) return;
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (!tab?.audible || tab.mutedInfo?.muted || !isAssignable(tab.url)) return;
+      const free = [...slots].sort((a, b) => a - b).find((s) => assignments[s] === undefined);
+      if (free === undefined) return;
+      await assign(free, tabId, true);
+    }).catch((e) => console.warn('deej: 自動で割り当てられません:', explain(e)))
+      .finally(pushState);
+  }, AUTO_DELAY_MS));
+}
+
+// 音量を変えられるページか (chrome:// やウェブストアは不可。popup.js の isSupported と同じ)
+function isAssignable(url) {
+  if (!url || !/^(https?|file):/.test(url)) return false;
+  return !/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/.test(url);
+}
+
 // タブが閉じられたら割り当てを外す
 chrome.tabs.onRemoved.addListener((tabId) => {
   injected.delete(tabId);
+  clearTimeout(autoTimers.get(tabId));
+  autoTimers.delete(tabId);
   currentTouched.delete(tabId);
   serial(async () => {
     const slot = slotOf(tabId);
@@ -385,6 +436,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   // 方式X: ページ移動で注入が消えるので入れ直す
   if (info.status === 'loading') injected.delete(tabId);
   await ready;
+  if (info.audible === true) onAudible(tabId);
   // A4 で下げたタブを再読み込みした: ページが変わって音量が元に戻っているので、かけ直す
   if (info.status === 'complete' && enabled && currentTouched.has(tabId) && slotOf(tabId) === undefined) {
     setMediaVolume(tabId, currentTouched.get(tabId));
@@ -410,7 +462,10 @@ async function snapshot() {
       tabs[s] = { id: t, title: t('closedTab') };
     }
   }
-  return { type: 'state', connected, enabled, slots, values, tabs, method, lang: LANG };
+  return {
+    type: 'state', connected, enabled, slots, values, tabs, method, lang: LANG,
+    autoAssign, autoSlots: [...autoSlots].map(Number),
+  };
 }
 
 async function pushState() {
@@ -449,7 +504,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     // タブ側でキャプチャが終わった (offscreen は停止済み)
     serial(async () => {
       const tabId = assignments[msg.slot];
-      if (tabId === undefined) return;
+      if (tabId === undefined || slotMethod(msg.slot) === 'X') return;
       delete assignments[msg.slot];
       clearBadge(tabId);
       await saveAssignments();
@@ -461,6 +516,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     assign: () => assign(msg.slot, msg.tabId),
     unassign: () => unassign(msg.slot),
     setMethod: () => setMethod(msg.method),
+    setAutoAssign: () => setAutoAssign(msg.on),
   };
   if (!actions[msg.type]) return;
   serial(actions[msg.type]).then(

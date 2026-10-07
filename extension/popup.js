@@ -76,6 +76,8 @@ function render() {
   document.querySelectorAll('.seg button').forEach((b) => {
     b.setAttribute('aria-checked', String(b.dataset.method === s.method));
   });
+  $('auto-assign').checked = !!s.autoAssign;
+  $('auto-hint').textContent = t(s.method === 'Y' ? 'autoHintY' : 'autoHintX');
   $('method-hint').textContent = `${METHOD_HINTS[s.method] ? t(METHOD_HINTS[s.method]) : ''}${LANG === 'ja' ? '。' : '. '}${t('switchNote')}`;
 
   const list = $('slots');
@@ -98,6 +100,14 @@ function render() {
     head.className = 'head';
     const name = document.createElement('b');
     name.textContent = t('tabN', slot);
+    // 自動で割り当てたタブ (方式Yの時も、ページ内の動画の音量で変えている)
+    if (tab && s.autoSlots?.includes(slot)) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = t('autoTag');
+      tag.title = t('autoTagTitle');
+      name.append(tag);
+    }
     const val = document.createElement('span');
     val.className = 'val';
     head.append(name, val);
@@ -169,6 +179,10 @@ function renderValues() {
     r.li.classList.toggle('muted', v !== undefined && pct === 0);
   }
 }
+
+$('auto-assign').addEventListener('change', (e) => {
+  act({ type: 'setAutoAssign', on: e.target.checked }, e.target);
+});
 
 document.querySelectorAll('.seg button').forEach((b) => {
   b.addEventListener('click', () => {

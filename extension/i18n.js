@@ -45,6 +45,11 @@ const I18N = {
     assignTitle: 'このタブを割り当てる',
     unassignTitle: '割り当てを解除',
     unassignAria: 'タブ {0} の割り当てを解除',
+    autoLabel: '音が鳴ったタブを自動で割り当てる',
+    autoHintY: '空いている番号にだけ割り当て、音が止まっても割り当てたままにします。自動で割り当てたタブは、ページ内の動画の音量を変えます（タブの音をまとめて調整するには、解除してから割り当て直してください）',
+    autoHintX: '空いている番号にだけ割り当て、音が止まっても割り当てたままにします',
+    autoTag: '自動',
+    autoTagTitle: '自動で割り当てたタブ。ページ内の動画の音量を変えています',
   },
   en: {
     name: 'deej Tab Volume',
@@ -88,6 +93,11 @@ const I18N = {
     assignTitle: 'Assign this tab',
     unassignTitle: 'Unassign',
     unassignAria: 'Unassign Tab {0}',
+    autoLabel: 'Assign tabs automatically when they play sound',
+    autoHintY: "Uses free numbers only, and keeps the tab assigned after the sound stops. Automatically assigned tabs change video volume in the page (to adjust the tab's audio, unassign and assign it again)",
+    autoHintX: 'Uses free numbers only, and keeps the tab assigned after the sound stops',
+    autoTag: 'Auto',
+    autoTagTitle: 'Assigned automatically. Changes video volume in the page',
   },
 };
 
