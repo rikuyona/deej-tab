@@ -10,6 +10,7 @@ Windows 固有の部品は winsys.py・appcatalog.py、Mac 固有の部品は ma
 """
 
 import asyncio
+import collections
 import copy
 import ctypes
 import json
@@ -34,7 +35,7 @@ import leds
 
 log = logging.getLogger("deej-tab")
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 
 LINE_RE = re.compile(r"^\d{1,4}(\|\d{1,4})*$")
 # コントローラーの ID の行 (ファームウェア deej-6ch-led 1.3 以降): @ID|名前|版|8 桁の 16 進
@@ -73,6 +74,8 @@ SESSION_REFRESH_MIN = 5.0    # 秒。これより短い間隔ではセッショ�
 SESSION_REFRESH_MAX = 45.0   # 秒。これより古い一覧はスライダー操作時に取り直す
 CONFIG_POLL = 2.0            # 秒。config.yaml の更新確認間隔
 SERIAL_STALE = 5.0           # 秒。これだけ何も届かなければ繋ぎ直す (スリープ復帰後の固まり対策)
+JUMP_LOG = 256              # 生の値。1 行でこれ以上変わったスライダーをログに残す (一瞬の爆音の診断用。25%)
+JUMP_LOG_MAX = 20            # 1 分にログに残す跳ねの数の上限 (速く動かし続けた時にログがあふれないように)
 ID_ASK_AFTER = 2.5           # 秒。つないでからこれだけ ID が来なければ @I で聞く (Nano は開くとリセットされ、起動時に送る)
 PROBE_TIME = 3.5             # 秒。コントローラーを探す時に 1 つのポートを読む時間
 TRAY_CHECK = 5.0             # 秒。トレイアイコンが消えていないかの確認間隔
@@ -885,6 +888,10 @@ class DeejTab:
         self.shown_levels = []       # 設定画面に実際に出す位置 (levels に揺れの抑えをかけたもの。触っていない時にちらつかないように)
         self.reapply = False         # True なら次の受信で全スライダーを適用し直す
         self.raw_values = []         # Nano から届いた生の値 (0〜1023)
+        self.odd_count = None        # 本数の合わない行が届いた時の本数 (同じ本数が 2 行続いたら使う)
+        self.jumped = {}             # 前の行で大きく跳ねたスライダー {idx: 跳ねる前の生の値} (次の行で戻ったか見る)
+        self.jump_times = collections.deque()   # 跳ねをログに残した時刻 (JUMP_LOG_MAX の数え方)
+        self.skip_line = False       # True なら次の値の行は使わない (つないだ直後は途中から読んでいることがある)
         self.calib = None            # 端の位置を測っている間 {"min": [...], "max": [...]} (その間は音量を変えない)
         self.applied = {}            # スライダーごとに実際にかけている音量 (ゆっくりついてくる途中の値)
         self.gliding = {}            # ゆっくりついてくる途中のスライダー {idx: 目標の音量}
@@ -949,6 +956,7 @@ class DeejTab:
                     opened_with = wanted
                     last_data = last_open = time.monotonic()
                     self.values = []
+                    self.skip_line = True
                     self._led_state.update(sent=None, broken=False, params_sent=None, cal_sent=None)
                     self.device = None
                     self._searched_ports = None   # また消えたら探し直せるように
@@ -989,6 +997,8 @@ class DeejTab:
                 line = raw.decode("ascii", "ignore").strip()
                 if line.startswith("@ID|"):
                     self.on_device_id(line)
+                elif self.skip_line and LINE_RE.match(line):
+                    self.skip_line = False   # つないだ直後の最初の行は、途中から読んでいることがあるので使わない
                 else:
                     self.handle_line(line, audio)
             elif time.monotonic() - last_data > SERIAL_STALE:
@@ -1083,6 +1093,16 @@ class DeejTab:
         with self.led_lock:
             self.led_sim.set_raw(parts[:leds.LED_COUNT], led_now())
         parts = [min(n, 1023) for n in parts]
+        prev = self.raw_values
+        if prev and len(parts) != len(prev):
+            # 本数が変わった: 途中で切れた行のことがあるので、同じ本数が 2 行続くまで使わない
+            if self.odd_count != len(parts):
+                self.odd_count = len(parts)
+                log.warning("本数の合わない行を使わずに捨てました (%d 本、前は %d 本): %s", len(parts), len(prev), line)
+                return
+        self.odd_count = None
+        if len(prev) == len(parts):
+            self.check_jumps(prev, parts)
         self.raw_values = parts
         cal = self.calib
         if cal is not None:
@@ -1121,6 +1141,30 @@ class DeejTab:
                 continue
             self.values[idx] = p
             self.set_target(idx, self.volumes[idx], audio)
+
+    def check_jumps(self, prev, parts):
+        """1 行で大きく変わったスライダーをログに残す (一瞬の爆音の診断用)。
+        次の行で元に戻ったら、それも残す (スライダーの接触や受信の乱れで一瞬だけ跳ねたとわかるように)"""
+        names = lambda i: f"{i + 1} ({', '.join(self.config.mapping.get(i, [])) or '割り当てなし'})"
+        for i, before in list(self.jumped.items()):
+            if i < len(parts) and abs(parts[i] - before) < JUMP_LOG // 2:
+                self.log_jump("スライダー %s は 1 行だけ跳ねて戻りました: %d → %d → %d",
+                              names(i), before, prev[i], parts[i])
+        self.jumped = {}
+        jumps = [i for i in range(len(parts)) if abs(parts[i] - prev[i]) >= JUMP_LOG]
+        if jumps:
+            self.jumped = {i: prev[i] for i in jumps}
+            self.log_jump("スライダーの値が跳ねました %s: %s → %s",
+                          " / ".join(names(i) for i in jumps), "|".join(map(str, prev)), "|".join(map(str, parts)))
+
+    def log_jump(self, *args):
+        now = time.monotonic()
+        while self.jump_times and now - self.jump_times[0] > 60:
+            self.jump_times.popleft()
+        if len(self.jump_times) >= JUMP_LOG_MAX:
+            return
+        self.jump_times.append(now)
+        log.info(*args)
 
     # ---------- 音量がゆっくりついてくる ----------
 
