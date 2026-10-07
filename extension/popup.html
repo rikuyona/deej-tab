@@ -29,6 +29,14 @@
     <p class="hint" data-i18n-html="hint">ポップアップを開かなくても、<b>Alt+Shift+A</b>（空いている番号へ。押すたびに次へ移り、最後は解除）・<b>Alt+Shift+1〜2</b>・ページの右クリック →「deej タブ音量」で割り当てられます（キーは chrome://extensions/shortcuts で変更可）</p>
   </section>
 
+  <section class="auto">
+    <label class="switch">
+      <input type="checkbox" id="auto-assign">
+      <span data-i18n="autoLabel">音が鳴ったタブを自動で割り当てる</span>
+    </label>
+    <p id="auto-hint" class="hint"></p>
+  </section>
+
   <section class="method">
     <h2 data-i18n="methodTitle">音量の変え方</h2>
     <div class="seg" role="radiogroup" aria-label="音量の変え方" data-i18n-aria="methodTitle">
