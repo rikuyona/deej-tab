@@ -10,6 +10,7 @@
 | `cap_core.stl` + `cap_shell.stl` | スライダーのツマミ（芯と外殻の 2 色） |
 | `knob_body.stl` + `knob_line.stl` | ノブ（本体と指示線の 2 色） |
 | `fit_test.stl`・`knob_fit_test.stl` | はめ合いの試し刷り |
+| `pcb/spacer.stl`（`--pcb` だけ） | 配線版の底ケースに基板版の天板を載せる時の、四隅の柱のスペーサー 4 個 |
 | `viewer.html` | 部品を入れた状態を回して見られるページ |
 | `*_section.png`・`*_drawing.png` | 断面図・図面 |
 

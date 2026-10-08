@@ -13,6 +13,7 @@
   fit_test.stl                     ツマミの爪のかかりのはめ合いテスト (1 色)
   knob_body.stl + knob_line.stl    回転ボリュームのノブ (黒い本体 + 乳白の指示線)。上面を下にした印刷向き。同時に読み込んで1つの部品にする
   knob_fit_test.stl                ノブの軸穴のはめ合いテスト (山の内径 5.5 / 5.6 / 5.7。1 色)
+  spacer.stl                       (--pcb だけ) 配線版の底ケースに基板版の天板を載せる時の、四隅の柱のスペーサー 4 個 (1 色)
   viewer.html                      部品を入れた状態を回して見られる確認用ページ (ブラウザで開く)
 
 座標: X = 左→右, Y = 手前→奥, Z = 上。単位 mm。
@@ -377,7 +378,8 @@ def shell():
 SLIDER_CLAW = (1.2, 6.0, 0.6, 0.2, 0.8, 22.0, 3.5, 1.1)
 # スライダーの爪: 厚さ, 幅, 本体の下に掛かる量, 本体の下とのすき間, まわりの切り込みの幅, 位置 (本体の中心から前後), 付け根の深さ (パネル上面から), 返しの高さ
 # 本体の高さはデータシート 7.0±0.5。M2 でネジ留めもするので、中間より少し長め (7.2) の本体に掛かる位置にする
-TOP_T = TOP + SLIDER_BODY[2] + SLIDER_CLAW[3] + SLIDER_CLAW[7]   # 天板の厚さ (パネル上面から裏まで)
+TOP_T_WIRED = TOP + SLIDER_BODY[2] + SLIDER_CLAW[3] + SLIDER_CLAW[7]   # 配線版の天板の厚さ (基板版のスペーサーの厚さに使う)
+TOP_T = TOP_T_WIRED                          # 天板の厚さ (パネル上面から裏まで)
 if PCB:
     TOP_T = TOP + SLIDER_BODY[2] - PCB_PLATE_GAP                  # 基板版: 裏が基板の上面から PCB_PLATE_GAP 上
 POCKET_FIT = 0.3                             # くぼみと部品のすき間 (片側)
@@ -597,6 +599,17 @@ def nano_clip_print(board_w=NANO_BOARD[0]):
     m = nano_clip(board_w).rotate([90, 0, 0])
     b = m.bounding_box()
     return m.translate([-b[0], -b[1], -b[2]])
+
+
+def pcb_spacers():
+    """基板版の天板を配線版の底ケースに載せる時の、四隅の柱のスペーサー 4 個 (2026-10-08)。
+    基板版の天板は配線版より薄く、配線版の柱の上に TOP_T_WIRED - TOP_T のすき間ができる。柱の上面と天板の裏はどちらもパネルと平行なので平らな輪でよい。
+    外径は柱と同じ、穴は柱と同じ M3 の通し穴。柱とのすき間 BOSS_GAP はそのまま残る"""
+    t = TOP_T_WIRED - TOP_T
+    r = SCREW[1] / 2 + COL_WALL
+    ring = Manifold.cylinder(t, r, r, SEG) - Manifold.cylinder(t + 2, M3_HOLE / 2, M3_HOLE / 2, SEG).translate([0, 0, -1])
+    step = 2 * r + 3
+    return Manifold.batch_boolean([ring.translate([r + step * (i % 2), r + step * (i // 2), 0]) for i in range(4)], manifold3d.OpType.Add)
 
 
 # ================================================================ ツマミ
@@ -1292,6 +1305,8 @@ def main():
     to_trimesh(nano_clip_print()).export(os.path.join(out, "nano_clip.stl"))   # Nano の押さえ (天井を下に。1色)
     if os.path.exists(os.path.join(out, "nano_support.stl")):   # 以前の別部品の支え (押さえの板にした)
         os.remove(os.path.join(out, "nano_support.stl"))
+    if PCB:
+        to_trimesh(pcb_spacers()).export(os.path.join(out, "spacer.stl"))   # 配線版の底ケースを使う時の柱のスペーサー (1色)
     export_viewer(top, base, display_parts(), out)
 
     ps = for_print_up(top).bounding_box()
@@ -1305,6 +1320,9 @@ def main():
     for x, y, seat, e, rest in screw_report():
         print(f"  ({x:.1f}, {y:.1f}) {'手前' if y < D / 2 else '奥'}: 座ぐりの深さ {seat:.1f}mm / 天板へのかかり {e:.1f}mm / 座面の上の柱 {rest:.1f}mm")
     if PCB:
+        r = SCREW[1] / 2 + COL_WALL
+        print(f"spacer.stl: 配線版の底ケースを使う時に四隅の柱に載せる輪 4 個 (厚さ {TOP_T_WIRED - TOP_T:.1f}・外径 {2 * r:.1f}・穴 {M3_HOLE:g})。"
+              f"四隅を M3 で締めるなら M3×{SCREW[0] + 2:g} (天板へのかかり {SCREW_ENGAGE - (TOP_T_WIRED - TOP_T) + 2:.1f}mm)")
         print(f"スライダーは M2 の皿ネジ 10 本で天板に留める (パネル {TOP:g}mm + スライダーへ約 2mm → M2×4)。ノブの底はパネルから {knob_lift():.1f}mm、軸穴の深さ {KNOB_BORE:.1f}mm")
 
 
