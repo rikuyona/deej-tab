@@ -11,7 +11,7 @@ deej-tab をソースから動かす・作る・配布するための資料で�
 | [extension.md](extension.md) | Chrome 拡張機能（タブの音量の変え方、割り当て、通信） |
 | [mac.md](mac.md) | Mac 版（補助プログラム、Process Tap、Windows 版との違い） |
 | [case.md](case.md) | 3D プリントのケースとツマミ（`case/case.py`） |
-| [pcb.md](pcb.md) | 基板版（スライダーを 1 枚の基板に載せる。未検証） |
+| [pcb.md](pcb.md) | 基板版（スライダーを 1 枚の基板に載せる） |
 | [wording.md](wording.md) | 画面に出す文言のルール |
 | [status.md](status.md) | 版の履歴・未確認のこと |
 
