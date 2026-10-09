@@ -16,6 +16,7 @@
   - `out/deej-tab-sliders-top.svg` / `-bottom.svg`：表・裏の図
   - `outline.json`：基板の外形・コネクターと部品の位置（`case.py --pcb` が読む）
 - ケース：`case\.venv\Scripts\python case\case.py --pcb` → `case/out/pcb/`
+  - 配線版の底ケースを持っていれば、刷り直さずに使える。基板版の天板は 1.8mm 薄いので、四隅の柱に `spacer.stl`（厚さ 1.8mm の輪 4 個）を載せる。四隅を M3 で締めるなら M3×10
 
 ## 基板の中身
 
