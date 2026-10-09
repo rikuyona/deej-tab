@@ -151,7 +151,7 @@ NANO_STOP_T = 1.75                           # 手前の止め (押さえを挿�
 NANO_WALL_FROM = 92.0                        # Nano の台の壁をこの Y より奥だけに付ける
 # Nano の押さえ (後付け。印刷済みの底ケースの手前の止めにかぶせて接着し、基板の手前の端を上から押さえる)
 # 台が奥側にしかなく、USB を抜き挿しすると基板が奥を支点に傾いて手前が浮いたため (2026-09-30)
-NANO_CLIP = (0.2, 1.2, 0.1, 1.0, 0.05)       # 止めとのすき間 (横・前後), 止めの前と左右の壁の厚さ, 止めの上のすき間, 天井の厚さ, 基板の上面とのすき間
+NANO_CLIP = (0.05, 1.2, 0.1, 1.0, 0.05)      # 止めとのすき間 (横・前後、片側。0.2 では止めの板が刷り上がりで約 0.2 薄くスカスカだった。きつければ削る。ユーザー、2026-10-09), 止めの前と左右の壁の厚さ, 止めの上のすき間, 天井の厚さ, 基板の上面とのすき間
 NANO_CLIP_SIDE = (0.1, 1.2, 4.6)             # 左右の爪: 基板の側面とのすき間 (片側), 厚さ / 基板にかかる長さ (手前の端から)。
                                              # 上は ICSP と 1 本目の端子 VIN・TX1 (どちらも使わない) を押さえる。裏は手前の端から 5mm 部品がない (実物で確認)。
                                              # スライダー4の配線の余裕の手前 (0.2) で止める
@@ -334,9 +334,9 @@ def panel_cuts():
             sink = Manifold.cylinder(1.0, M2_HOLE / 2, M2_HEAD / 2, SEG).translate([0, dy, -1.0 + 0.001])
             cuts.append(on_panel(hole + sink + Manifold.cylinder(1, M2_HEAD / 2, M2_HEAD / 2, SEG).translate([0, dy, 0]), x, SLIDER_Y))
     cuts.append(on_panel(Manifold.cylinder(TOP + 2, POT_HOLE / 2, POT_HOLE / 2, SEG).translate([0, 0, -TOP - 1]), KNOB_X, KNOB_Y))
-    if not PCB:   # 基板版のボリュームは基板で留めるので回り止めは無い
-        tw, td, tdepth, tr = POT_TAB
-        cuts.append(on_panel(Manifold.cube([tw, td, tdepth + 0.01]).translate([-tw / 2, -tr - td / 2, -TOP - 0.01]), KNOB_X, KNOB_Y))
+    # 回り止めの逃げは基板版にも要る (JH16K6 も同じ 16K シリーズの本体で、ナットでパネルに留める。2026-10-08 にユーザーが刷った天板で気づいた)
+    tw, td, tdepth, tr = POT_TAB
+    cuts.append(on_panel(Manifold.cube([tw, td, tdepth + 0.01]).translate([-tw / 2, -tr - td / 2, -TOP - 0.01]), KNOB_X, KNOB_Y))
     return Manifold.batch_boolean(cuts, manifold3d.OpType.Add)
 
 
