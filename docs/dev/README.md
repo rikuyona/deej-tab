@@ -80,7 +80,7 @@ python3 -m venv .venv-mac
 .venv-mac/bin/pip install -r requirements-mac.txt
 .venv-mac/bin/python build_mac.py --helper-only   # 補助プログラム (mac/deej-tab-helper.swift) を作る
 .venv-mac/bin/python deej_tab.py --no-tray        # ログを見ながら動かす
-.venv-mac/bin/python build_mac.py                 # deej-tab.app と release/deej-tab-x.y.z-mac.zip を作る
+.venv-mac/bin/python build_mac.py                 # deej-tab.app と release/deej-tab-x.y.z-mac.dmg を作る
 ```
 
 ターミナルから動かすと、システムオーディオの録音の許可はターミナルに対して求められます。エディタや Claude Code などターミナル以外から動かすと、許可のダイアログが出ないまま音量を変えたアプリの音が消えることがあります。その時は `build_mac.py` で作った `deej-tab.app` で試します。詳しくは [mac.md](mac.md)。
@@ -123,9 +123,9 @@ Windows 版は Inno Setup 6 のインストーラー（`installer/deej-tab.iss`�
 - リリースの手順
   1. `VERSION` を上げ、テストを通す（ファームウェアを直したら `tools/build_firmware.py` で HEX も作り直す）
   2. `tools/release.py --build` で Windows のインストーラー（`deej-tab-X.Y.Z-setup.exe`）と、Windows 版・拡張機能・ファームウェアの zip を `release/` に作る
-  3. Mac で `build_mac.py` を実行して Mac 版の zip を作る
-  4. main にコミットしてタグ `vX.Y.Z` を push し、GitHub の Releases に zip を載せる（ノートは日本語と英語の両方）
-- 拡張機能だけを直した時は、タグを `extension-vX.Y.Z` にし、アプリ・Mac 版・ファームウェアは前の版の zip をそのまま一緒に載せる（Latest からすべて揃うように）
+  3. Mac で `build_mac.py` を実行して Mac 版の dmg を作る
+  4. main にコミットしてタグ `vX.Y.Z` を push し、GitHub の Releases に zip・インストーラー・dmg を載せる（ノートは日本語と英語の両方）
+- 拡張機能だけを直した時は、タグを `extension-vX.Y.Z` にし、アプリ・Mac 版・ファームウェアは前の版のファイルをそのまま一緒に載せる（Latest からすべて揃うように）
 - ファームウェアだけを直した時も同じで、タグを `firmware-vX.Y.Z` にします。zip は `tools/release.py --firmware` で `FW_VERSION` の名前で作ります。アプリの版の名前の zip（`deej-tab-firmware-1.3.1.zip` など）とぶつからないよう、`FW_VERSION` はそれまでに出したアプリの版より大きい番号にします
 - 基板版のガーバーと部品の一覧は、タグ `pcb-vX.Y.Z` のプレリリースに載せる（Latest にしない。アプリ・拡張機能の Latest からすべて揃うように）。実物で確かめたらプレリリースを外す
 - ケース・ツマミの STL は Releases ではなく [MakerWorld](https://makerworld.com/models/3382344) で配っています

@@ -57,7 +57,11 @@ Tap の `AudioDeviceStart` は、録音の許可の返事を待つ間止まり�
 
 ## アプリにする（`app/build_mac.py`）
 
-- 補助プログラムを arm64 と x86_64 で作って lipo でまとめ、`deej-tab.app` と `release/deej-tab-<版>-mac.zip` を作ります（`--helper-only` で補助プログラムだけ）
+- 補助プログラムを arm64 と x86_64 で作って lipo でまとめ、`deej-tab.app` と `release/deej-tab-<版>-mac.dmg` を作ります（`--helper-only` で補助プログラムだけ）
+- 配布は dmg です（1.3.x は zip）。開くと `deej-tab.app` と「Applications」へのショートカットが並び、ドラッグで入れられます。zip だと展開した場所（ダウンロード）から動かしがちで、ログイン時の自動起動もその場所を指してしまうためです
+  - `hdiutil create`（UDZO・HFS+）だけで作ります。ウィンドウの背景やアイコンの位置は付けていません（Finder を AppleScript で動かす必要があり、作る環境によって失敗しやすいため）
+  - `.app` は `ditto` で写します（署名を壊さないため）
+- Apple の公証（notarization）は受けていません（Apple Developer Program が要る）。macOS 15 からは右クリックの「開く」で警告を飛ばせなくなったので、README ではシステム設定の「このまま開く」を案内しています
 - Info.plist に `LSUIElement`（メニューバーだけに出る）・`NSAudioCaptureUsageDescription`・`LSMinimumSystemVersion` を入れます
 - 自己署名の条件を `identifier "io.github.rikuyona.deej-tab"` にしています。自己署名は中身のハッシュで同じアプリかを見るため、そのままだと作り直すたびに録音の許可が外れました
 

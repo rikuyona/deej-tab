@@ -10,7 +10,7 @@
 できるもの:
   mac/build/deej-tab-helper                 補助プログラム (Apple シリコン・Intel の両方入り)
   build/dist/deej-tab.app                   アプリ
-  ../release/deej-tab-<版>-mac.zip          配布用
+  ../release/deej-tab-<版>-mac.dmg          配布用 (開くと deej-tab.app と「アプリケーション」が並ぶ)
 """
 
 import argparse
@@ -108,13 +108,25 @@ def build_app():
     run(["codesign", "--force", "--sign", "-", "-r=designated => identifier \"%s\"" % BUNDLE_ID, app])
     run(["codesign", "--verify", "--deep", "--strict", app])
 
-    os.makedirs(RELEASE, exist_ok=True)
-    zip_path = os.path.join(RELEASE, f"deej-tab-{deej_tab.VERSION}-mac.zip")
-    if os.path.exists(zip_path):
-        os.remove(zip_path)
-    run(["ditto", "-c", "-k", "--keepParent", app, zip_path])
+    dmg = make_dmg(app, deej_tab.VERSION)
     print("\nできました:", app)
-    print("配布用:", zip_path)
+    print("配布用:", dmg)
+
+
+def make_dmg(app, version):
+    """deej-tab.app と「アプリケーション」へのショートカットを入れた dmg を作る (開いてドラッグで入れられる)"""
+    stage = os.path.join(BUILD, "dmg")
+    if os.path.exists(stage):
+        shutil.rmtree(stage)
+    os.makedirs(stage)
+    run(["ditto", app, os.path.join(stage, "deej-tab.app")])   # 署名を壊さないように ditto で写す
+    os.symlink("/Applications", os.path.join(stage, "Applications"))
+    os.makedirs(RELEASE, exist_ok=True)
+    dmg = os.path.join(RELEASE, f"deej-tab-{version}-mac.dmg")
+    run(["hdiutil", "create", "-volname", f"deej-tab {version}", "-srcfolder", stage,
+         "-fs", "HFS+", "-format", "UDZO", "-ov", dmg])
+    shutil.rmtree(stage)
+    return dmg
 
 
 def main():
