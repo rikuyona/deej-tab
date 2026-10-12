@@ -67,6 +67,9 @@ def build_app():
         "--icon", icon,
         "--osx-bundle-identifier", BUNDLE_ID,
         "--add-data", os.path.join(HERE, "ui.html") + os.pathsep + ".",
+        # 設定画面から書き込むファームウェア (HEX と、版を読む .ino)
+        "--add-data", os.path.join(HERE, "..", "firmware", "deej-6ch-led", "deej-6ch-led.hex") + os.pathsep + "firmware",
+        "--add-data", os.path.join(HERE, "..", "firmware", "deej-6ch-led", "deej-6ch-led.ino") + os.pathsep + "firmware",
         "--add-binary", HELPER + os.pathsep + ".",
         # pystray は実行時に使う部品を選ぶので、Mac 用を明示する
         "--hidden-import", "pystray._darwin",

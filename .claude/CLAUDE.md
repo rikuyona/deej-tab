@@ -17,6 +17,7 @@ PC アプリ（Python）・Chrome 拡張機能・ファームウェア・3D プ�
 - **確認のために deej-tab を別に動かす時は、音量操作を `DummyAudio` にする**。`WindowsAudio` のままだと本物の音量が変わる
 - Mac 対応の変更で Windows 版の動作を変えない（分岐は `IS_MAC` / `sys.platform`）
 - ファームウェアの EEPROM は並び順で保存している。数値を足す時は `paramTable` の最後に足す
+- `.ino` を直したら `tools/build_firmware.py` で `deej-6ch-led.hex` を作り直す（設定画面から書き込むのはこの HEX）
 - COM ポートは 1 つのプロセスしか開けない。ファームウェアを書き込む前に deej-tab を終了する
 
 ## よく使うコマンド（Windows、`app` フォルダで）
@@ -25,7 +26,7 @@ PC アプリ（Python）・Chrome 拡張機能・ファームウェア・3D プ�
 |---|---|
 | テスト | `.venv\Scripts\python -m unittest discover -s tests` |
 | exe を作る | `.venv\Scripts\python build.py`（起動中の exe は置き換えられない） |
-| 配布用 zip | `.venv\Scripts\python ..\tools\release.py --build` |
+| 配布用 zip・インストーラー | `.venv\Scripts\python ..\tools\release.py --build`（インストーラーは Inno Setup 6 が要る） |
 | ファームウェアの書き込み | `arduino-cli upload -p COMx --fqbn arduino:avr:nano:cpu=atmega328old deej-6ch-led`（`firmware` フォルダで） |
 
 ## 開発機のくせ（Windows）
@@ -33,4 +34,5 @@ PC アプリ（Python）・Chrome 拡張機能・ファームウェア・3D プ�
 - Node は入っていない（JS の構文チェックはできない）
 - WMI が固まることがあり、固まると pip・`Get-CimInstance`・`tasklist` まで止まる。`python -c "import platform; platform._wmi_query('OS','Version')"` がすぐ返るかで確かめる（PC の再起動で直る）
 - COM3 / COM4 は Bluetooth の仮想ポートで、コントローラーではない
-- 道具の置き場所は `%LOCALAPPDATA%\deej-tab\`（`arduino-cli\`、基板用の `tools\`）
+- 道具の置き場所は `%LOCALAPPDATA%\deej-tab\`（`arduino-cli\`、基板用の `tools\`）。Inno Setup 6 は `%LOCALAPPDATA%\Programs\Inno Setup 6\`
+- Windows PowerShell 5.1 で動かす `.ps1` に日本語を書く時は BOM 付き UTF-8 で保存する（BOM なしだと日本語の行が次の行まで飲み込む）

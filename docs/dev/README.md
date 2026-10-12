@@ -87,7 +87,9 @@ python3 -m venv .venv-mac
 
 ## ファームウェアを書き込む
 
-Arduino IDE（ボード「Arduino Nano」）か arduino-cli で書き込みます。互換品は旧ブートローダーが多いので、失敗したらプロセッサを切り替えます。
+使う人は、deej-tab の設定画面（「設定」→「コントローラー」→「ファームウェア」）から書き込みます（[hardware.md](hardware.md#設定画面から書き込む)）。書き込むのは `firmware/deej-6ch-led/deej-6ch-led.hex` で、**`.ino` を直したら `tools/build_firmware.py` で作り直してコミットします**（作り直し忘れはテスト `test_bundled_hex_is_current` が見つける）。
+
+開発中は Arduino IDE（ボード「Arduino Nano」）か arduino-cli で書き込んでもかまいません。互換品は旧ブートローダーが多いので、失敗したらプロセッサを切り替えます。
 
 ```bat
 cd firmware
@@ -100,13 +102,27 @@ deej-tab が起動中だと COM ポートが開けないので、先に終了し
 
 `case` フォルダで `pip install numpy trimesh manifold3d` を入れた venv を作り、`python case.py` を実行します。出力は `case/out/`（STL・部品を入れた状態を回して見られる `viewer.html`・断面図）。寸法はファイル先頭の設定で変えられます。詳しくは [case.md](case.md)。
 
+## インストーラー
+
+Windows 版は Inno Setup 6 のインストーラー（`installer/deej-tab.iss`）でも配ります。zip を展開して置き場所を決める・自動起動を入れる・拡張機能のフォルダを探す、の 3 つで、初めての人がつまずいたためです。zip 版（インストールしない）も残しています。
+
+- Inno Setup 6 は `winget install JRSoftware.InnoSetup`（`%LOCALAPPDATA%\Programs\Inno Setup 6` に入る）。`tools/release.py` が探して、`ISCC.exe /DAppVersion=…` で作ります
+- 入れる先は `%LOCALAPPDATA%\Programs\deej-tab`（管理者の許可は要らない）。`config.yaml` とログは今までどおり exe の隣にでき、上書き・アンインストールでは消しません
+- 選べること：Windows の起動時に自動で起動（初期設定でオン。トレイのメニューと同じ Run の値）・デスクトップのショートカット
+- 拡張機能は `{app}\extension` に置きます（前の版のファイルが残らないよう、入れるたびに消してから置く）。ブラウザの拡張機能のページから読み込むので、置き場所が変わらないことが大事です。完了画面に読み込み方とフォルダの場所を出し、「フォルダを開く」も付けています
+- 上書き・アンインストールの前に、入っている exe に `--quit` を送って止め（音量を元に戻す処理を飛ばさないため）、それでも残っていれば（zip 版など）`taskkill` で止めます
+- アンインストールでは、トレイから自動起動をオンにした時の Run の値も消します（消した exe を起動しようとしないように）
+- 「Windows によって PC が保護されました」は、コード署名をしないかぎり出ます（有料の証明書か、Azure の署名サービスが要る）。README で「詳細情報」→「実行」を案内しています
+- 完了画面の説明は長いので、欄の高さを決めて（`FinishedLabel.Height`）、その下にチェック（起動する・フォルダを開く）をずらしています。`AdjustHeight` では伸びきらなかった
+- 確かめ方：`/VERYSILENT /DIR=作業用フォルダ` で入れ、上書き・アンインストールまで通す。画面は `/LANG=ja`・`/LANG=en` で開き、ボタン（`TNewButton`）に `BM_CLICK` を送って完了画面まで進めて撮りました
+
 ## ブランチとリリース
 
 - `main` が公開している版です。大きな変更はブランチで作り、PR でマージします
 - 版の番号は、アプリが `app/deej_tab.py` の `VERSION`、拡張機能が `extension/manifest.json`、ファームウェアが `.ino` の `FW_VERSION` です。ファームウェアの zip はアプリの版の名前で作ります
 - リリースの手順
-  1. `VERSION` を上げ、テストを通す
-  2. `tools/release.py --build` で Windows 版・拡張機能・ファームウェアの zip を `release/` に作る
+  1. `VERSION` を上げ、テストを通す（ファームウェアを直したら `tools/build_firmware.py` で HEX も作り直す）
+  2. `tools/release.py --build` で Windows のインストーラー（`deej-tab-X.Y.Z-setup.exe`）と、Windows 版・拡張機能・ファームウェアの zip を `release/` に作る
   3. Mac で `build_mac.py` を実行して Mac 版の zip を作る
   4. main にコミットしてタグ `vX.Y.Z` を push し、GitHub の Releases に zip を載せる（ノートは日本語と英語の両方）
 - 拡張機能だけを直した時は、タグを `extension-vX.Y.Z` にし、アプリ・Mac 版・ファームウェアは前の版の zip をそのまま一緒に載せる（Latest からすべて揃うように）

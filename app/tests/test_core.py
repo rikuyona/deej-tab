@@ -196,6 +196,21 @@ class HandleLineTest(unittest.TestCase):
         self.line(0, 0, 0, 700, 0, 0)
         self.assertTrue(any(m.get("type") == "current" for m in self.sent))
 
+    def test_current_edge_goes_to_extension_when_edge_connected(self):
+        # 拡張機能を Edge に入れてつないだ時は、Edge が最前面なら表示中のタブだけ変える (Chrome は普通のアプリ扱い)
+        self.app.client_browsers = {object(): "msedge.exe"}
+        self.audio.foreground = "msedge.exe"
+        self.line(0, 0, 0, 700, 0, 0)
+        self.assertTrue(any(m.get("type") == "current" for m in self.sent))
+        self.assertFalse(any(c[0] == "msedge.exe" for c in self.audio.calls if isinstance(c, tuple)))
+        self.assertFalse(self.app.is_reserved_process("chrome.exe"))
+
+    def test_current_edge_without_extension_changes_app(self):
+        # 拡張機能をつないでいない時、Edge は普通のアプリとして音量を変える (今までどおり)
+        self.audio.foreground = "msedge.exe"
+        self.line(0, 0, 0, 700, 0, 0)
+        self.assertFalse(any(m.get("type") == "current" for m in self.sent))
+
     def test_current_skips_reserved_app(self):
         self.audio.foreground = "discord.exe"
         self.line(0, 0, 0, 700, 0, 0)
