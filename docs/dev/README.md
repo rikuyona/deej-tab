@@ -127,5 +127,5 @@ Windows 版は Inno Setup 6 のインストーラー（`installer/deej-tab.iss`�
   4. main にコミットしてタグ `vX.Y.Z` を push し、GitHub の Releases に zip・インストーラー・dmg を載せる（ノートは日本語と英語の両方）
 - 拡張機能だけを直した時は、タグを `extension-vX.Y.Z` にし、アプリ・Mac 版・ファームウェアは前の版のファイルをそのまま一緒に載せる（Latest からすべて揃うように）
 - ファームウェアだけを直した時も同じで、タグを `firmware-vX.Y.Z` にします。zip は `tools/release.py --firmware` で `FW_VERSION` の名前で作ります。アプリの版の名前の zip（`deej-tab-firmware-1.3.1.zip` など）とぶつからないよう、`FW_VERSION` はそれまでに出したアプリの版より大きい番号にします
-- 基板版のガーバーと部品の一覧は、タグ `pcb-vX.Y.Z` のプレリリースに載せる（Latest にしない。アプリ・拡張機能の Latest からすべて揃うように）。実物で確かめたらプレリリースを外す
+- 基板版のガーバーと部品の一覧、ケースの STL の zip（`case.py --pcb` の出力。MakerWorld は配線版だけなので）は、タグ `pcb-vX.Y.Z` のプレリリースに載せる（Latest にしない。アプリ・拡張機能の Latest からすべて揃うように）。実物で確かめたらプレリリースを外す
 - ケース・ツマミの STL は Releases ではなく [MakerWorld](https://makerworld.com/models/3382344) で配っています
