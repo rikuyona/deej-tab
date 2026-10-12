@@ -528,7 +528,7 @@ with open(os.path.join(OUT, NAME + "-bom.csv"), "w", newline="", encoding="utf-8
     w = csv.writer(g)
     w.writerow(["部品", "記号", "数", "部品形状"])
     w.writerow(["スライダー Bourns PTL60-15R0-103B2", "RV1-RV5", 5, "Bourns_PTL60"])
-    w.writerow(["ボリューム JH16K6B103L20KC-H13 (秋月 117390)", "RV6", 1, "長穴 3 つ"])
+    w.writerow(["ボリューム SH16K4B103L20KCCI (配線版と同じ。端子の V 字の曲がりを伸ばして挿す。JH16K6B103L20KC-H13 は端子の幅を削らないと入らない)", "RV6", 1, "長穴 3 つ"])
     w.writerow(["コネクター JST S3B-ZR-3.4 (ZH 横向き 3 ピン、秋月 114161)", "JP", 1, "JST_ZH_S3B-ZR_Horizontal"])
     w.writerow(["コネクター JST S6B-ZR-3.4 (ZH 横向き 6 ピン、秋月 114164)", "JL,JA", 2, "JST_ZH_S6B-ZR_Horizontal"])
     w.writerow(["コネクター付コード 3P 黒白赤 (ZH 相当、秋月 118272)", "JP のケーブル", 1, ""])
