@@ -193,7 +193,9 @@ deej-tab で足したキー：
 
 ## 拡張機能を入れたブラウザ
 
-拡張機能は Chrome・Edge・Brave・Vivaldi（Chromium）で動きます。拡張機能が WebSocket でつないできた時に、相手のポートを持つプロセスを `psutil.net_connections` で調べ、そのブラウザの exe 名を覚えます（`peer_browser`。ログに「拡張機能が接続しました (msedge.exe)」）。`deej.current` で表示中のタブだけを変えるのは、そのブラウザです（`tab_browsers()`）。わからない時（拡張機能をつないでいない・Mac）は今までどおり Chrome です。
+拡張機能は Chrome・Edge・Brave・Vivaldi（Chromium）で動きます。拡張機能が WebSocket でつないできた時に、相手のポートを持つプロセスを `psutil.net_connections` で調べ、そのブラウザの exe 名を覚えます（`peer_browser`。ログに「拡張機能が接続しました (msedge.exe)」）。`deej.current` で表示中のタブだけを変えるのは、そのブラウザです（`tab_browsers()`）。わからない時（拡張機能をつないでいない）は今までどおり Chrome です。
+
+- Mac は `psutil.net_connections` が管理者でないと使えないので、`lsof` で相手の pid を調べ、補助プログラムの `app_of` で親のアプリ（`microsoft edge.app` など）にまとめます（`macsys.peer_app`。拡張機能の通信は Chrome Helper などの子プロセスがするため）
 
 - 拡張機能を入れていないブラウザは、普通のアプリとして音量を変えます（Chrome に入れて Edge が最前面なら、Edge 全体を変える）
 - 拡張機能を 2 つのブラウザに入れると、タブの番号がぶつかるので、1 つにしてもらいます（README）

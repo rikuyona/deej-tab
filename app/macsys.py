@@ -602,6 +602,34 @@ def foreground():
     return r.get("name"), int(r.get("pid") or 0), bool(r.get("full"))
 
 
+# ---------------------------------------------------------------- 拡張機能をつないできたブラウザ
+
+def peer_pid(lsof_out, host, port, server_port):
+    """lsof -Fpn の出力から、host:port → host:server_port の接続を持つプロセスの pid を探す。なければ None"""
+    pid = None
+    for line in lsof_out.splitlines():
+        if line.startswith("p"):
+            pid = int(line[1:])
+        elif line.startswith("n") and line[1:] == f"{host}:{port}->{host}:{server_port}":
+            return pid
+    return None
+
+
+def peer_app(host, port, server_port, helper_=None):
+    """127.0.0.1 の host:port から server_port につないできたプロセスのアプリ名 (google chrome.app など)。わからなければ None。
+    psutil.net_connections は Mac では管理者でないと使えないので、lsof で pid を調べる。
+    拡張機能の通信は Chrome Helper などの子プロセスがするので、補助プログラムで親のアプリにまとめる"""
+    try:
+        out = subprocess.run(["/usr/sbin/lsof", "-nP", f"-iTCP@{host}:{port}", "-sTCP:ESTABLISHED", "-Fpn"],
+                             capture_output=True, text=True, timeout=3).stdout
+        pid = peer_pid(out, host, port, server_port)
+        if not pid or pid == os.getpid():
+            return None
+        return (helper_ or helper()).request("app_of", pid=pid).get("name")
+    except Exception:
+        return None
+
+
 def use_physical_pixels():
     pass
 

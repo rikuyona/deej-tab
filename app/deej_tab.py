@@ -48,7 +48,8 @@ EXE_RE = re.compile(r"^[\w .\-()+&']+\.(exe|app)$")
 IS_MAC = sys.platform == "darwin"
 CHROME_APPS = ("chrome.exe", "google chrome.app")   # タブの音量を拡張機能で変えるブラウザ (つないできたブラウザがわからない時)
 # 拡張機能を入れられるブラウザ (Chromium 系)。拡張機能をつないできたプロセスの名前がこれなら、そのブラウザのタブを変える
-TAB_BROWSERS = ("chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe")
+TAB_BROWSERS = ("chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe",
+                "google chrome.app", "microsoft edge.app", "brave browser.app", "vivaldi.app")
 OBS_RE = re.compile(r"^obs:([^\x00-\x1f|]{1,100})$")
 PROFILE_NAME_RE = re.compile(r"^[^\x00-\x1f]{1,24}$")
 DEFAULT_PROFILE = "標準"
@@ -773,8 +774,12 @@ def bundled_firmware():
 def peer_browser(remote, server_port):
     """拡張機能の WebSocket をつないできたブラウザのプロセス名 (chrome.exe・msedge.exe など)。わからなければ None。
     拡張機能の通信はブラウザのプロセスがするので、相手側のポートを持っているプロセスを調べる"""
-    if sys.platform != "win32" or not remote:
+    if sys.platform not in ("win32", "darwin") or not remote:
         return None
+    if IS_MAC:
+        import macsys
+        name = macsys.peer_app(remote[0], remote[1], server_port)
+        return name if name in TAB_BROWSERS else None
     try:
         import psutil
         host, port = remote[0], remote[1]
@@ -1369,7 +1374,7 @@ class DeejTab:
 
     def tab_browsers(self):
         """タブの音量を拡張機能で変えるブラウザ: 拡張機能をつないでいるブラウザ (Edge・Brave なども)。
-        わからない時 (つないでいない・Mac) は Chrome"""
+        わからない時 (つないでいない) は Chrome"""
         known = {b for b in self.client_browsers.values() if b}
         return known or set(CHROME_APPS)
 
