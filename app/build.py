@@ -53,6 +53,9 @@ def main():
         "--icon", icon,
         "--version-file", version,
         "--add-data", os.path.join(HERE, "ui.html") + os.pathsep + ".",
+        # 設定画面から書き込むファームウェア (HEX と、版を読む .ino)
+        "--add-data", os.path.join(HERE, "..", "firmware", "deej-6ch-led", "deej-6ch-led.hex") + os.pathsep + "firmware",
+        "--add-data", os.path.join(HERE, "..", "firmware", "deej-6ch-led", "deej-6ch-led.ino") + os.pathsep + "firmware",
         # pystray は実行時に使う部品を選ぶので、Windows 用を明示する
         "--hidden-import", "pystray._win32",
         # pyserial の socket:// (仮スライダー) なども実行時に読み込まれるので入れておく

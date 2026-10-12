@@ -35,7 +35,7 @@ import leds
 
 log = logging.getLogger("deej-tab")
 
-VERSION = "1.3.2"
+VERSION = "1.4.0"
 
 LINE_RE = re.compile(r"^\d{1,4}(\|\d{1,4})*$")
 # コントローラーの ID の行 (ファームウェア deej-6ch-led 1.3 以降): @ID|名前|版|8 桁の 16 進
@@ -46,7 +46,10 @@ TAB_RE = re.compile(r"^tab\.([1-9]\d*)$")
 # アプリの名前: Windows は exe 名、Mac は .app の名前 (どちらも小文字)
 EXE_RE = re.compile(r"^[\w .\-()+&']+\.(exe|app)$")
 IS_MAC = sys.platform == "darwin"
-CHROME_APPS = ("chrome.exe", "google chrome.app")   # タブの音量を拡張機能で変えるブラウザ
+CHROME_APPS = ("chrome.exe", "google chrome.app")   # タブの音量を拡張機能で変えるブラウザ (つないできたブラウザがわからない時)
+# 拡張機能を入れられるブラウザ (Chromium 系)。拡張機能をつないできたプロセスの名前がこれなら、そのブラウザのタブを変える
+TAB_BROWSERS = ("chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe",
+                "google chrome.app", "microsoft edge.app", "brave browser.app", "vivaldi.app")
 OBS_RE = re.compile(r"^obs:([^\x00-\x1f|]{1,100})$")
 PROFILE_NAME_RE = re.compile(r"^[^\x00-\x1f]{1,24}$")
 DEFAULT_PROFILE = "標準"
@@ -74,6 +77,10 @@ SESSION_REFRESH_MIN = 5.0    # 秒。これより短い間隔ではセッショ�
 SESSION_REFRESH_MAX = 45.0   # 秒。これより古い一覧はスライダー操作時に取り直す
 CONFIG_POLL = 2.0            # 秒。config.yaml の更新確認間隔
 SERIAL_STALE = 5.0           # 秒。これだけ何も届かなければ繋ぎ直す (スリープ復帰後の固まり対策)
+CONTROLLER_MISSING = 10.0    # 秒。これだけコントローラーから何も届かなければ、設定画面に「見つかりません」を出す
+# 互換品の Nano の USB (CH340) のドライバ。設定画面の「見つかりません」から開く (ほかの URL は開かない)
+DRIVER_URL = "https://www.wch-ic.com/downloads/CH341SER_EXE.html"
+FW_VERSION_RE = re.compile(r'FW_VERSION\[\] = "([^"]+)"')
 JUMP_LOG = 256              # 生の値。1 行でこれ以上変わったスライダーをログに残す (一瞬の爆音の診断用。25%)
 JUMP_LOG_MAX = 20            # 1 分にログに残す跳ねの数の上限 (速く動かし続けた時にログがあふれないように)
 ID_ASK_AFTER = 2.5           # 秒。つないでからこれだけ ID が来なければ @I で聞く (Nano は開くとリセットされ、起動時に送る)
@@ -751,6 +758,40 @@ class WindowsAudio:
             return None
 
 
+def bundled_firmware():
+    """設定画面から書き込むファームウェア (HEX のパス, 版)。exe は中に入れたもの、ソースから動かす時は firmware/ のもの。
+    版は .ino の FW_VERSION から読む。見つからなければ None"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for d in (os.path.join(RES_DIR, "firmware"), os.path.join(here, "..", "firmware", "deej-6ch-led")):
+        hex_path, ino = os.path.join(d, "deej-6ch-led.hex"), os.path.join(d, "deej-6ch-led.ino")
+        if os.path.exists(hex_path) and os.path.exists(ino):
+            with open(ino, encoding="utf-8") as f:
+                m = FW_VERSION_RE.search(f.read())
+            return hex_path, (m.group(1) if m else None)
+    return None
+
+
+def peer_browser(remote, server_port):
+    """拡張機能の WebSocket をつないできたブラウザのプロセス名 (chrome.exe・msedge.exe など)。わからなければ None。
+    拡張機能の通信はブラウザのプロセスがするので、相手側のポートを持っているプロセスを調べる"""
+    if sys.platform not in ("win32", "darwin") or not remote:
+        return None
+    if IS_MAC:
+        import macsys
+        name = macsys.peer_app(remote[0], remote[1], server_port)
+        return name if name in TAB_BROWSERS else None
+    try:
+        import psutil
+        host, port = remote[0], remote[1]
+        for c in psutil.net_connections(kind="tcp"):
+            if c.pid and c.laddr and c.raddr and c.laddr.port == port and c.raddr.port == server_port                     and c.laddr.ip == host:
+                name = psutil.Process(c.pid).name().lower()
+                return name if name in TAB_BROWSERS else None
+    except Exception:
+        pass
+    return None
+
+
 def list_com_ports():
     from serial.tools import list_ports
     return [{"device": p.device, "description": p.description} for p in list_ports.comports()]
@@ -878,6 +919,8 @@ class DeejTab:
         self.system = system and sys.platform in ("win32", "darwin")
         self.loop = None
         self.clients = set()         # 拡張機能
+        self.client_browsers = {}    # {拡張機能の接続: ブラウザのプロセス名 (わからなければ None)}
+        self.request_quit = self.shutdown   # --quit で終わる時に呼ぶ。トレイがある時は run_tray がトレイの「終了」に差し替える
         self.ui_clients = set()      # 設定画面
         self.tab_values = {}         # {slot: 音量} (1.0 = 100%。上限を上げたスライダーは 1 を超える)
         self.tab_assigned = set()    # 拡張機能でタブを割り当て済みのスロット (LED を暗くするかの判断)
@@ -911,6 +954,12 @@ class DeejTab:
         self.game_name = None        # deej.game: 最後に全画面だったアプリ
         self.auto = {"profile": None, "exe": None, "pid": 0, "base": None, "suppressed": None}
         self.serial_state = {"connected": False, "port": config.com_port, "error": ""}
+        self.last_serial_data = time.monotonic()   # 最後にコントローラーから届いた時刻 (起動直後は起動した時刻)
+        self.firmware = bundled_firmware()         # 設定画面から書き込むファームウェア (HEX のパス, 版)
+        self.flash_progress = None                 # 書き込み中の進み具合 (0〜100)。書き込んでいなければ None
+        self.flashing = threading.Event()          # 書き込み中はシリアルの処理がポートを手放す
+        self.port_released = threading.Event()
+        self._usb_count = (0.0, None)              # (数えた時刻, USB のシリアルポートの数)
         self.device = None           # 今つないでいるコントローラーの {"id", "fw", "name"} (ID を送らなければ None)
         self._searched_ports = None  # 最後にコントローラーを探した時の USB ポートの一覧 (変わった時だけ探し直す)
         self._sent_enabled = config.enabled
@@ -947,6 +996,16 @@ class DeejTab:
                     with self.config_lock:
                         self.reload_config()
             wanted = (self.config.com_port, self.config.baud_rate)
+            if self.flashing.is_set():
+                # ファームウェアの書き込み中: ポートを手放して待つ
+                if port is not None:
+                    port.close()
+                    port = None
+                self.port_released.set()
+                self.serial_state = {"connected": False, "port": wanted[0], "error": "ファームウェアを書き込み中"}
+                self.levels = []
+                self.stop.wait(0.2)
+                continue
             if port is not None and opened_with != wanted:
                 port.close()
                 port = None
@@ -959,7 +1018,6 @@ class DeejTab:
                     self.skip_line = True
                     self._led_state.update(sent=None, broken=False, params_sent=None, cal_sent=None)
                     self.device = None
-                    self._searched_ports = None   # また消えたら探し直せるように
                     id_asked = False
                     with self.led_lock:
                         self.led_sim.boot(led_now())   # Nano は接続するとリセットされ、起動アニメから始まる
@@ -989,7 +1047,8 @@ class DeejTab:
                 port = None
                 continue
             if raw:
-                last_data = time.monotonic()
+                last_data = self.last_serial_data = time.monotonic()
+                self._searched_ports = None   # 届いたので、また消えたり黙ったりしたら探し直せるように
                 if stale:
                     stale = False
                     self.serial_state = {"connected": True, "port": wanted[0], "error": ""}
@@ -1013,6 +1072,7 @@ class DeejTab:
                 except Exception:
                     pass
                 port = None
+                self.search_controller(wanted, silent=True)
                 continue
             if self.device is None and not id_asked and time.monotonic() - last_open > ID_ASK_AFTER:
                 # 起動時の ID を取りこぼした (開いてもリセットされない時など) ので聞く。古いファームウェアは無視する
@@ -1050,8 +1110,10 @@ class DeejTab:
                 self.config.save(device_id=info["id"])
             self.after_config_change()
 
-    def search_controller(self, wanted):
+    def search_controller(self, wanted, silent=False):
         """com_port が消えた時、ほかの USB のポートからコントローラーを探して com_port を書き換える。
+        silent: com_port は開けたが何も届かない (初期設定の COM3 が Bluetooth などほかの機器だった時)。
+        その時は com_port のほかの USB のポートを探す。
         USB のポートの顔ぶれが変わった時だけ探す (ほかの Arduino などを何度も開いてリセットしないように)。見つけたら True"""
         name, baud = wanted
         if "://" in name:
@@ -1060,13 +1122,19 @@ class DeejTab:
             ports = usb_serial_ports()
         except Exception:
             return False
-        if name in ports or ports == self._searched_ports:
-            return False   # ポートはある (ほかのアプリが使っている) か、前に探した時と同じ
+        if ports == self._searched_ports:
+            return False   # 前に探した時と同じ
+        if not silent and name in ports:
+            return False   # ポートはある (ほかのアプリが使っている)
         self._searched_ports = ports
-        if not ports:
+        others = [p for p in ports if p != name]
+        if not others:
             return False
-        log.info("%s が見つからないので、コントローラーを探します: %s", name, ", ".join(ports))
-        found = find_controller(self.config.device_id, baud, ports)
+        if silent:
+            log.info("%s から何も届かないので、コントローラーを探します: %s", name, ", ".join(others))
+        else:
+            log.info("%s が見つからないので、コントローラーを探します: %s", name, ", ".join(others))
+        found = find_controller(self.config.device_id, baud, others)
         if not found:
             log.info("コントローラーは見つかりませんでした")
             return False
@@ -1290,19 +1358,25 @@ class DeejTab:
 
     def apply_app(self, name, v, names):
         """deej.current / deej.game: そのアプリの音量を変える。Chrome なら表示中のタブだけ"""
-        if name in CHROME_APPS and self.config.tab_slots():
-            # Chrome 全体ではなく、表示中のタブだけを拡張機能に変えさせる
+        if name in self.tab_browsers() and self.config.tab_slots():
+            # ブラウザ全体ではなく、表示中のタブだけを拡張機能に変えさせる
             self.broadcast({"type": "current", "value": v})
         elif name and not self.is_reserved_process(name):
             names.add(name)
 
     def is_reserved_process(self, name):
         """deej.current で触らないアプリ: 他のスライダーに割り当て済みのアプリと、
-        tab.N を使っている時の Chrome (Chrome 全体を変えるとタブ用スライダーの上限まで変わるため)"""
+        tab.N を使っている時の、拡張機能を入れたブラウザ (ブラウザ全体を変えるとタブ用スライダーの上限まで変わるため)"""
         name = name.lower()
         if name in self.config.mapped_process_names():
             return True
-        return name in CHROME_APPS and bool(self.config.tab_slots())
+        return name in self.tab_browsers() and bool(self.config.tab_slots())
+
+    def tab_browsers(self):
+        """タブの音量を拡張機能で変えるブラウザ: 拡張機能をつないでいるブラウザ (Edge・Brave なども)。
+        わからない時 (つないでいない) は Chrome"""
+        known = {b for b in self.client_browsers.values() if b}
+        return known or set(CHROME_APPS)
 
     # ---------- LED ----------
 
@@ -1713,7 +1787,55 @@ class DeejTab:
             "type": "status", "serial": self.serial_state, "device": self.device, "extension": len(self.clients),
             "obs": self.obs.status(), "game": self.game_name, "auto_profile": self.auto["profile"],
             "hotkey_errors": dict(self.hotkeys.errors) if self.hotkeys else {},
+            **self.missing_status(),
+            "firmware": {"bundled": self.firmware[1] if self.firmware else None, "progress": self.flash_progress},
         }
+
+    def start_flash(self):
+        """設定画面の「書き込む」: 接続先のポートの Nano に、同梱のファームウェアを書き込む (別のスレッドで)"""
+        if self.flash_progress is not None:
+            raise ValueError("書き込み中です")
+        if not self.firmware:
+            raise ValueError("書き込むファームウェアが見つかりません")
+        port = self.config.com_port
+        if "://" in port:
+            raise ValueError("仮スライダーには書き込めません")
+        self.flash_progress = 0
+        threading.Thread(target=self._flash, args=(port,) + self.firmware, daemon=True, name="flash").start()
+
+    def _flash(self, port, hex_path, version):
+        import flasher
+        self.port_released.clear()
+        self.flashing.set()
+        try:
+            self.port_released.wait(3)
+            with open(hex_path, encoding="ascii") as f:
+                image = flasher.parse_hex(f.read())
+            log.info("ファームウェア %s を %s に書き込みます", version, port)
+            baud = flasher.flash(port, image, lambda p: setattr(self, "flash_progress", p))
+            log.info("ファームウェアを書き込みました (%dbps)", baud)
+            self.broadcast_ui({"type": "notice", "message": f"ファームウェア {version} を書き込みました"})
+        except Exception as e:
+            log.warning("ファームウェアを書き込めません (%s): %s", port, e)
+            self.broadcast_ui({"type": "error", "message": f"ファームウェアを書き込めません: {e}"})
+        finally:
+            self.flash_progress = None
+            self.flashing.clear()   # シリアルの処理がまた開く (Nano は書いたファームウェアで起動し、ID を送ってくる)
+
+    def missing_status(self):
+        """コントローラーが見つからない時の設定画面のお知らせ用。
+        missing: CONTROLLER_MISSING 秒以上何も届いていない (仮スライダーは除く)。
+        usb_ports: その時の USB のシリアルポートの数 (0 ならドライバが入っていない見込みが高い)"""
+        if "://" in self.config.com_port or time.monotonic() - self.last_serial_data <= CONTROLLER_MISSING:
+            return {"missing": False, "usb_ports": None}
+        at, n = self._usb_count
+        if time.monotonic() - at > 5.0:   # 設定画面へは 0.05 秒ごとに送るので、数えるのは 5 秒ごと
+            try:
+                n = len(usb_serial_ports())
+            except Exception:
+                n = None
+            self._usb_count = (time.monotonic(), n)
+        return {"missing": True, "usb_ports": n}
 
     def ui_levels(self):
         pickup = {str(i): round(self.config.position(i, ref), 3) for i, ref in self.pickup.items()}
@@ -1934,6 +2056,15 @@ class DeejTab:
         elif t == "set_autostart":
             set_autostart(bool(msg["value"]))
             self.broadcast_ui(self.ui_config())
+        elif t == "flash_firmware":
+            self.start_flash()
+        elif t == "open_driver_page":
+            import webbrowser
+            webbrowser.open(DRIVER_URL)
+        elif t == "quit":
+            # deej-tab.exe --quit (インストーラーが上書き・アンインストールの前に送る)。トレイの「終了」と同じ
+            log.info("--quit で終了します")
+            threading.Thread(target=self.request_quit, daemon=True).start()
         elif t == "refresh_lists":
             await self.send_lists(ws)
         elif t == "fit_window":
@@ -2015,7 +2146,9 @@ class DeejTab:
             await self.ui_handler(ws)
             return
         self.clients.add(ws)
-        log.info("拡張機能が接続しました")
+        browser = await asyncio.to_thread(peer_browser, ws.remote_address, self.config.ws_port)
+        self.client_browsers[ws] = browser
+        log.info("拡張機能が接続しました%s", f" ({browser})" if browser else "")
         try:
             await ws.send(json.dumps({"type": "slots", "slots": self.config.tab_slots()}))
             await ws.send(json.dumps({"type": "state", "enabled": self.config.enabled,
@@ -2032,6 +2165,7 @@ class DeejTab:
             pass
         finally:
             self.clients.discard(ws)
+            self.client_browsers.pop(ws, None)
             log.info("拡張機能が切断しました")
 
     def ext_message(self, msg):
@@ -2084,9 +2218,13 @@ class DeejTab:
         return None
 
     async def keepalive(self):
-        while True:
-            await asyncio.sleep(KEEPALIVE)
-            self._broadcast(json.dumps({"type": "ping"}))
+        """拡張機能へ ping を送り続ける。終了したら戻る (トレイなしで動かした時は、これで run が終わり --quit で止まる)"""
+        last = time.monotonic()
+        while not self.stop.is_set():
+            await asyncio.sleep(0.5)
+            if time.monotonic() - last >= KEEPALIVE:
+                last = time.monotonic()
+                self._broadcast(json.dumps({"type": "ping"}))
 
     async def run(self):
         self.loop = asyncio.get_running_loop()
@@ -2607,6 +2745,25 @@ def already_running(port):
         return False
 
 
+def quit_running(port, timeout=10.0):
+    """動いている deej-tab に終了を頼み、終わるまで待つ。終わった (もともと動いていない) なら True"""
+    if not already_running(port):
+        return True
+    try:
+        from websockets.sync.client import connect
+        with connect(f"ws://127.0.0.1:{port}/ui", origin=f"http://127.0.0.1:{port}", open_timeout=3) as ws:
+            ws.send(json.dumps({"type": "quit"}))
+    except Exception as e:
+        log.warning("終了を頼めません: %s", e)
+        return False
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if not already_running(port):
+            return True
+        time.sleep(0.3)
+    return False
+
+
 ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
 ICON_RED = (255, 77, 77)       # 実機のスライダー LED の赤 (ui.html の --accent)
 ICON_GRAY = (128, 134, 148)    # デバイス未接続
@@ -2824,6 +2981,9 @@ def run_tray(app, port):
         else:
             fn()
 
+    # --quit で終わる時はトレイの「終了」と同じ (Mac はメインスレッドで)
+    app.request_quit = lambda: on_main(lambda: on_quit(icon, None))
+
     def show(icon_image, title):
         icon.icon = icon_image
         icon.title = title
@@ -2895,6 +3055,11 @@ def main():
     # 設定画面だけのプロセス (本体のトレイから起動される)
     if "--settings" in sys.argv:
         run_settings_window(config.ws_port)
+        return
+
+    # 動いている deej-tab を終わらせる (インストーラーが上書き・アンインストールの前に使う)
+    if "--quit" in sys.argv:
+        quit_running(config.ws_port)
         return
 
     # 2つ目の起動は設定画面を開くだけにする

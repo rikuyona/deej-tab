@@ -412,10 +412,10 @@ function onAudible(tabId) {
   }, AUTO_DELAY_MS));
 }
 
-// 音量を変えられるページか (chrome:// やウェブストアは不可。popup.js の isSupported と同じ)
+// 音量を変えられるページか (chrome:// やウェブストア・Edge のアドオンストアは不可。popup.js の isSupported と同じ)
 function isAssignable(url) {
   if (!url || !/^(https?|file):/.test(url)) return false;
-  return !/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/.test(url);
+  return !/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore|microsoftedge\.microsoft\.com\/addons)/.test(url);
 }
 
 // タブが閉じられたら割り当てを外す

@@ -46,6 +46,8 @@ def handle(msg):
         return {"name": "google chrome.app", "pid": 123, "full": False}
     if cmd == "apps":
         return {"apps": [{"name": "safari.app", "title": "Safari", "path": "/Applications/Safari.app"}]}
+    if cmd == "app_of":
+        return {"name": "microsoft edge.app" if msg["pid"] == 4321 else None}
     if cmd == "names":
         return {"names": {p: p.rsplit("/", 1)[-1][:-4] for p in msg["paths"]}}
     if cmd == "icon":

@@ -204,6 +204,34 @@ class MacMiscTest(unittest.TestCase):
         app.handle_line("0|512|0|0|0|0", audio)
         self.assertIn({"type": "current", "value": 0.5}, sent)
         self.assertNotIn("google chrome.app", [k for k, _ in audio.calls])
+        # 拡張機能を Edge に入れてつないだ時は、Edge のタブを変え、Chrome は普通のアプリとして変える
+        app.client_browsers = {object(): "microsoft edge.app"}
+        self.assertFalse(app.is_reserved_process("google chrome.app"))
+        audio.foreground = "microsoft edge.app"
+        sent.clear()
+        app.handle_line("0|256|0|0|0|0", audio)
+        self.assertIn({"type": "current", "value": 0.25}, sent)
+
+    def test_peer_app(self):
+        """拡張機能をつないできたプロセスを lsof で探し、補助プログラムで親のアプリにまとめる"""
+        out = ("p914\nf42\nn127.0.0.1:49669->127.0.0.1:8765\n"
+               "p1922\nf16\nn127.0.0.1:8765->127.0.0.1:49669\n")
+        self.assertEqual(macsys.peer_pid(out, "127.0.0.1", 49669, 8765), 914)
+        self.assertIsNone(macsys.peer_pid(out, "127.0.0.1", 49670, 8765))
+        self.assertIsNone(macsys.peer_pid("", "127.0.0.1", 49669, 8765))
+
+        class Done:
+            stdout = out.replace("914", "4321")
+        h = macsys.Helper(FAKE)
+        orig = macsys.subprocess.run
+        macsys.subprocess.run = lambda *a, **k: Done()
+        try:
+            self.assertEqual(macsys.peer_app("127.0.0.1", 49669, 8765, h), "microsoft edge.app")
+            Done.stdout = out.replace("914", str(os.getpid()))   # 自分自身 (テストなど) は調べない
+            self.assertIsNone(macsys.peer_app("127.0.0.1", 49669, 8765, h))
+        finally:
+            macsys.subprocess.run = orig
+            h.stop()
 
 
 if __name__ == "__main__":

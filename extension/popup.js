@@ -24,7 +24,7 @@ function applyStatic() {
 function isSupported(url) {
   if (!url) return false;
   if (!/^(https?|file):/.test(url)) return false;
-  return !/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore)/.test(url);
+  return !/^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore|microsoftedge\.microsoft\.com\/addons)/.test(url);
 }
 
 function showError(text) {

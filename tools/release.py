@@ -5,6 +5,7 @@
     app\\.venv\\Scripts\\python tools\\release.py --firmware  ファームウェアの zip だけを FW_VERSION の名前で作る
 
 できるもの (release/):
+  deej-tab-<版>-setup.exe          Windows のインストーラー (Inno Setup 6 が要る。installer/deej-tab.iss)
   deej-tab-<版>-windows.zip        deej-tab.exe
   deej-tab-extension-<版>.zip      Chrome 拡張機能 (展開して「パッケージ化されていない拡張機能を読み込む」)
   deej-tab-firmware-<版>.zip       Nano 用ファームウェア
@@ -38,6 +39,25 @@ def ext_version():
 def fw_version():
     with open(os.path.join(ROOT, "firmware", "deej-6ch-led", "deej-6ch-led.ino"), encoding="utf-8") as f:
         return re.search(r'FW_VERSION\[\] = "([^"]+)"', f.read()).group(1)
+
+
+def find_iscc():
+    """Inno Setup 6 のコンパイラー (winget で入れると %LOCALAPPDATA% の Programs、普通に入れると Program Files (x86))"""
+    for base in (os.environ.get("LOCALAPPDATA", ""), os.environ.get("ProgramFiles(x86)", ""), os.environ.get("ProgramFiles", "")):
+        for sub in (os.path.join("Programs", "Inno Setup 6"), "Inno Setup 6"):
+            path = os.path.join(base, sub, "ISCC.exe")
+            if base and os.path.exists(path):
+                return path
+    return None
+
+
+def make_setup(version):
+    iscc = find_iscc()
+    if not iscc:
+        sys.exit("Inno Setup 6 がありません (winget install JRSoftware.InnoSetup)")
+    subprocess.run([iscc, "/Q", f"/DAppVersion={version}", os.path.join(ROOT, "installer", "deej-tab.iss")], check=True)
+    path = os.path.join(OUT, f"deej-tab-{version}-setup.exe")
+    print(f"  {os.path.basename(path)}  ({os.path.getsize(path) / 1e6:.1f} MB)")
 
 
 def make_zip(name, files):
@@ -83,6 +103,7 @@ def main():
     v, ev = app_version(), ext_version()
     os.makedirs(OUT, exist_ok=True)
     print(f"release/ に作ります (アプリ {v} / 拡張機能 {ev})")
+    make_setup(v)
     make_zip(f"deej-tab-{v}-windows.zip", [(exe, "deej-tab/deej-tab.exe")])
     make_zip(f"deej-tab-extension-{ev}.zip", tree(os.path.join(ROOT, "extension"), "deej-tab-extension"))
     make_zip(f"deej-tab-firmware-{v}.zip", tree(os.path.join(ROOT, "firmware"), "firmware"))

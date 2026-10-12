@@ -69,6 +69,16 @@
     background: rgba(245, 176, 65, .08); border: 1px solid rgba(245, 176, 65, .35); color: var(--warn); font-size: 13px;
   }
   .paused .banner { display: block; }
+  /* コントローラーが見つからない時のお知らせ */
+  .missing { margin: 0 0 18px; padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.6;
+    background: rgba(245, 176, 65, .08); border: 1px solid rgba(245, 176, 65, .35); }
+  .missing[hidden] { display: none; }
+  .missing > b { color: var(--warn); }
+  .missing ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+  .missing li.likely { color: var(--text); }
+  .missing button { margin-left: 6px; }
+  .fw-progress { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .row .t small.fw-new { color: var(--warn); }
 
   main { padding: 24px 28px 40px; max-width: 1280px; margin: 0 auto; }
   #view-settings { max-width: 860px; margin: 0 auto; }
@@ -417,6 +427,16 @@
 
 <main>
   <div class="banner">一時停止中です。スライダーを動かしても音量は変わりません（Chrome のタブは元の音量に戻っています）。</div>
+  <div class="missing" id="missing" hidden>
+    <b>コントローラーが見つかりません</b>
+    <ul>
+      <li>USB ケーブルが PC とコントローラーにしっかり差さっているか確かめてください（充電専用のケーブルでは通信できません）</li>
+      <li id="missing-driver"><span>互換品の Arduino Nano は、USB のドライバ（CH340）を入れないと PC から見えないことがあります。デバイス マネージャーの「ポート (COM と LPT)」に出てこないときは、ドライバを入れてから USB を差し直してください</span><span id="missing-driver-likely" hidden>（今、PC に USB のシリアルポートが 1 つも見えていないので、いちばん考えられる原因です）</span><button type="button" class="btn" id="driver-page">ドライバのページを開く</button></li>
+      <li>Arduino IDE などのほかのアプリが、コントローラーのポートを使っていないか確かめてください</li>
+      <li>まだファームウェアを書き込んでいない Nano なら、「設定」→「コントローラー」で接続先を選んでから、「ファームウェア」の「書き込む」を押してください</li>
+      <li>それでもつながらないときは、「設定」→「コントローラー」で COM ポートを選んでください</li>
+    </ul>
+  </div>
   <section id="view-mix" role="tabpanel">
   <div class="profiles" id="profiles"></div>
   <h2>割り当て</h2>
@@ -445,6 +465,11 @@
         <input class="text" id="port-custom" placeholder="例: COM5" hidden>
         <button class="btn" id="port-apply" hidden>適用</button>
       </div>
+    </div>
+    <div class="row">
+      <div class="t">ファームウェア<small id="fw-note">接続先のポートの Nano に書き込みます</small></div>
+      <b class="fw-progress" id="fw-progress" hidden></b>
+      <button class="btn" id="fw-flash">書き込む</button>
     </div>
     <div class="row">
       <div class="t">すべてのスライダーの向きを反転<small id="invert-note">上げると音が小さくなるときはオン。1 本ずつ変えるときは各スライダーの ⚙ から</small></div>
@@ -580,6 +605,31 @@ const I18N_EN = {
   'オフにすると、スライダーを動かしても音量は変わりません（タスクトレイのメニューからも切り替えられます）':
     "Turn off to stop the sliders from changing the volume (also in the tray menu)",
   'スライダー操作を有効にする': 'Enable sliders',
+  'コントローラーが見つかりません': 'Controller not found',
+  'まだファームウェアを書き込んでいない Nano なら、「設定」→「コントローラー」で接続先を選んでから、「ファームウェア」の「書き込む」を押してください':
+    'If the Nano has no firmware yet, choose its port in Settings → Controller, then click Write next to Firmware',
+  'ファームウェア': 'Firmware', '書き込む': 'Write',
+  '接続先のポートの Nano に書き込みます': 'Writes to the Nano on the selected port',
+  '書き込めるファームウェアが入っていません': 'No firmware is bundled to write',
+  '書き込み中です。終わるまで USB を抜かないでください': 'Writing. Do not unplug the USB cable until it finishes',
+  '書き込み中です': 'Already writing',
+  '書き込むファームウェアが見つかりません': 'The firmware to write was not found',
+  '仮スライダーには書き込めません': 'Cannot write to the virtual sliders',
+  'ブートローダーが応答しません。ポートが合っているか、ほかのアプリがポートを使っていないか確かめてください':
+    'The bootloader does not respond. Check that the port is right and that no other app is using it',
+  'ブートローダーが応答しません': 'The bootloader does not respond',
+  'ブートローダーの返事が途中で切れました': 'The reply from the bootloader was cut off',
+  'USB ケーブルが PC とコントローラーにしっかり差さっているか確かめてください（充電専用のケーブルでは通信できません）':
+    'Check that the USB cable is firmly plugged into the PC and the controller (charge-only cables cannot carry data)',
+  '互換品の Arduino Nano は、USB のドライバ（CH340）を入れないと PC から見えないことがあります。デバイス マネージャーの「ポート (COM と LPT)」に出てこないときは、ドライバを入れてから USB を差し直してください':
+    'Arduino Nano clones may not show up until you install their USB driver (CH340). If the controller is not listed under "Ports (COM & LPT)" in Device Manager, install the driver and plug the USB cable in again',
+  '（今、PC に USB のシリアルポートが 1 つも見えていないので、いちばん考えられる原因です）':
+    ' (No USB serial port is visible on this PC right now, so this is the most likely cause)',
+  'ドライバのページを開く': 'Open the driver page',
+  'Arduino IDE などのほかのアプリが、コントローラーのポートを使っていないか確かめてください':
+    "Check that no other app, such as the Arduino IDE, is using the controller's port",
+  'それでもつながらないときは、「設定」→「コントローラー」で COM ポートを選んでください':
+    'If it still does not connect, choose the COM port in Settings → Controller',
   '一時停止中です。スライダーを動かしても音量は変わりません（Chrome のタブは元の音量に戻っています）。':
     "Paused. Moving the sliders doesn't change the volume (Chrome tabs are back to their original volume).",
   'deej-tab に接続できません': "Can't connect to deej-tab",
@@ -717,6 +767,8 @@ const I18N_EN = {
   'Mac のマイク・OBS の音量を、deej-tab が変える前に戻します（出力の音量はそのまま。アプリと Chrome のタブはいつも元に戻ります）':
     'Restores the Mac microphone and OBS volumes to what they were before deej-tab changed them (the output volume is kept as is; apps and Chrome tabs are always restored)',
   '例: /dev/cu.usbserial-110': 'e.g. /dev/cu.usbserial-110',
+  'それでもつながらないときは、「設定」→「コントローラー」でシリアルポートを選んでください':
+    'If it still does not connect, choose the serial port in Settings → Controller',
   '一覧にないアプリをアプリケーションフォルダから選ぶ…': 'Choose an app from the Applications folder…',
   'アプリを選ぶ (例: discord.app)': 'Choose an app (e.g. discord.app)',
   'コントローラーをつないだ USB のシリアルポート': 'The USB serial port the controller is connected to',
@@ -751,6 +803,20 @@ const I18N_EN_RE = [
   [/^(\d+) 本合わせています。合わせた範囲はコントローラーにも保存され、LED も同じ範囲で動きます$/, (m) => `${m[1]} calibrated. The range is also saved to the controller and used for the LEDs`],
   [/^(.+)（見つかりません）$/, (m) => `${m[1]} (not found)`],
   [/^(.+) 接続中$/, (m) => `${m[1]} connected`],
+  [/^コントローラーは (.+)。新しい (.+) を書き込めます$/, (m) => `The controller has ${m[1]}. You can write the newer ${m[2]}`],
+  [/^コントローラーは (.+)（最新）$/, (m) => `The controller has ${m[1]} (latest)`],
+  [/^ファームウェアの版がわかりません。(.+) を書き込むと、LED の表示や、別の USB の口に差したときの探し直しが使えます$/,
+    (m) => `Firmware version unknown. Writing ${m[1]} enables the LEDs and finding the controller again on another USB port`],
+  [/^接続先のポートの Nano に (.+) を書き込みます。初めて使う Nano や、Arduino IDE を使わずに更新したいときに$/,
+    (m) => `Writes ${m[1]} to the Nano on the selected port. For a new Nano, or to update without the Arduino IDE`],
+  [/^(.+) の Nano にファームウェア (.+) を書き込みます。LED の光り方・端の位置の設定は残ります。書き込みの間（10〜20 秒）は USB を抜かないでください$/,
+    (m) => `Write firmware ${m[2]} to the Nano on ${m[1]}? Your LED and calibration settings are kept. Do not unplug the USB cable while writing (10–20 seconds)`],
+  [/^ファームウェア (.+) を書き込みました$/, (m) => `Wrote firmware ${m[1]}`],
+  [/^ファームウェアを書き込めません: (.+)$/, (m) => `Could not write the firmware: ${trText(m[1])}`],
+  [/^(.+) を開けません。ポートが合っているか、ほかのアプリ（Arduino IDE など）が使っていないか確かめてください$/,
+    (m) => `Cannot open ${m[1]}. Check that the port is right and that no other app (such as the Arduino IDE) is using it`],
+  [/^Nano \(ATmega328P\) ではないようです \(シグネチャ (.+)\)$/, (m) => `This does not look like a Nano (ATmega328P) (signature ${m[1]})`],
+  [/^書き込んだ内容が合いません \(アドレス (.+)\)。もう一度書き込んでください$/, (m) => `The written data does not match (address ${m[1]}). Please write again`],
   [/^(.+) 未接続$/, (m) => `${m[1]} not connected`],
   [/^(.+)の明るさ$/, (m) => `${trText(m[1])} brightness`],
   [/^初期設定: (.+)$/, (m) => `Default: ${trText(m[1])}`],
@@ -790,6 +856,10 @@ const MAC_TEXT = {
   'アプリ・マイク・OBS の音量を、deej-tab が変える前に戻します（全体の音量はそのまま。Chrome のタブはいつも元に戻ります）':
     'Mac のマイク・OBS の音量を、deej-tab が変える前に戻します（出力の音量はそのまま。アプリと Chrome のタブはいつも元に戻ります）',
   '例: COM5': '例: /dev/cu.usbserial-110',
+  'それでもつながらないときは、「設定」→「コントローラー」で COM ポートを選んでください':
+    'それでもつながらないときは、「設定」→「コントローラー」でシリアルポートを選んでください',
+  'If it still does not connect, choose the COM port in Settings → Controller':
+    'If it still does not connect, choose the serial port in Settings → Controller',
   '一覧にないアプリを exe ファイルから選ぶ…': '一覧にないアプリをアプリケーションフォルダから選ぶ…',
   'アプリを選ぶ (例: valorant.exe)': 'アプリを選ぶ (例: discord.app)',
   'Start with Windows': 'Start at login',
@@ -1324,6 +1394,14 @@ document.getElementById('invert').addEventListener('change', (e) => setOption('i
 document.querySelectorAll('#noise button').forEach((b) => b.addEventListener('click', () => setOption('noise_reduction', b.dataset.v)));
 document.querySelectorAll('#language button').forEach((b) => b.addEventListener('click', () => setOption('language', b.dataset.v)));
 document.getElementById('autostart').addEventListener('change', (e) => send({ type: 'set_autostart', value: e.target.checked }));
+document.getElementById('driver-page').addEventListener('click', () => send({ type: 'open_driver_page' }));
+document.getElementById('fw-flash').addEventListener('click', () => {
+  const port = state.serial?.port || '';
+  const v = state.status.firmware?.bundled;
+  if (confirm(`${port} の Nano にファームウェア ${v} を書き込みます。LED の光り方・端の位置の設定は残ります。書き込みの間（10〜20 秒）は USB を抜かないでください`)) {
+    send({ type: 'flash_firmware' });
+  }
+});
 document.getElementById('enabled').addEventListener('change', (e) => send({ type: 'set_enabled', value: e.target.checked }));
 document.querySelectorAll('#led-mode button').forEach((b) => b.addEventListener('click', () => setOption('led_mode', b.dataset.v)));
 document.getElementById('restore').addEventListener('change', (e) => setOption('restore_on_pause', e.target.checked));
@@ -1747,6 +1825,38 @@ function openProfilePanel(name, anchor) {
   render();
 }
 
+function versionNewer(a, b) {
+  /** 版 a が b より新しいか ("1.3.10" > "1.3.9") */
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  }
+  return false;
+}
+
+function renderFirmware(s, dev) {
+  const fw = state.status.firmware || {};
+  const btn = document.getElementById('fw-flash');
+  const prog = document.getElementById('fw-progress');
+  const note = document.getElementById('fw-note');
+  const flashing = fw.progress !== null && fw.progress !== undefined;
+  btn.hidden = !fw.bundled;
+  btn.disabled = flashing || s?.port === FAKE_PORT;
+  prog.hidden = !flashing;
+  if (flashing) prog.textContent = `${fw.progress}%`;
+  let text, isNew = false;
+  if (!fw.bundled) text = '書き込めるファームウェアが入っていません';
+  else if (flashing) text = '書き込み中です。終わるまで USB を抜かないでください';
+  else if (dev?.name === 'deej-6ch-led' && versionNewer(fw.bundled, dev.fw)) {
+    text = `コントローラーは ${dev.fw}。新しい ${fw.bundled} を書き込めます`;
+    isNew = true;
+  } else if (dev?.name === 'deej-6ch-led') text = `コントローラーは ${dev.fw}（最新）`;
+  else if (s?.connected) text = `ファームウェアの版がわかりません。${fw.bundled} を書き込むと、LED の表示や、別の USB の口に差したときの探し直しが使えます`;
+  else text = `接続先のポートの Nano に ${fw.bundled} を書き込みます。初めて使う Nano や、Arduino IDE を使わずに更新したいときに`;
+  if (note.textContent !== text) note.textContent = text;
+  note.classList.toggle('fw-new', isNew);
+}
+
 function renderStatus() {
   const s = state.serial;
   const ps = document.getElementById('pill-serial');
@@ -1754,6 +1864,14 @@ function renderStatus() {
   const portName = s?.port === FAKE_PORT ? '仮スライダー' : (s?.port || '');
   document.getElementById('serial-text').textContent = s?.connected ? portName + ' 接続中' : portName + ' 未接続';
   ps.title = s?.error || '';
+  renderFirmware(s, state.status.device);
+  // 見つからないときのお知らせ。Mac はドライバが要らないので、ドライバの行は出さない
+  const missing = !!state.status.missing;
+  document.getElementById('missing').hidden = !missing;
+  const noPorts = missing && state.status.usb_ports === 0;
+  document.getElementById('missing-driver').hidden = PLATFORM === 'mac';
+  document.getElementById('missing-driver').classList.toggle('likely', noPorts);
+  document.getElementById('missing-driver-likely').hidden = !noPorts;
   const dev = state.status.device;
   document.getElementById('port-note').textContent = dev
     ? `コントローラーをつないだ USB の COM ポート。ID ${dev.id}（ファームウェア ${dev.fw}）。別の USB の口に差しても、自動で探してつなぎ直します`

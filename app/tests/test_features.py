@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 import yaml
@@ -809,6 +810,39 @@ class ControllerIdTest(unittest.TestCase):
         self.assertFalse(self.app.search_controller(("COM5", 9600)))   # ある (ほかのアプリが使っている)
         self.assertFalse(self.app.search_controller(("socket://127.0.0.1:9000", 9600)))
         self.assertEqual(self.probed, [])
+
+    def test_searches_others_when_port_is_silent(self):
+        # 初めての PC: 初期設定の COM3 は開けるが Bluetooth などで何も届かない → ほかの USB のポートを探す
+        mine = {"id": "0A1B2C3D", "fw": "1.3.3", "name": "deej-6ch-led"}
+        self.fake_ports(["COM3", "COM6"], {"COM6": mine})
+        self.assertTrue(self.app.search_controller(("COM3", 9600), silent=True))
+        self.assertEqual(self.c.com_port, "COM6")
+        self.assertEqual(self.probed, ["COM6"])   # 黙っている COM3 は開き直さない
+
+    def test_silent_search_only_once_per_ports(self):
+        self.fake_ports(["COM3", "COM6"], {})
+        self.assertFalse(self.app.search_controller(("COM3", 9600), silent=True))
+        self.assertFalse(self.app.search_controller(("COM3", 9600), silent=True))   # 黙ったままでも何度も開かない
+        self.assertEqual(self.probed, ["COM6"])
+        self.fake_ports(["COM3"], {})
+        self.assertFalse(self.app.search_controller(("COM3", 9600), silent=True))   # ほかに USB のポートがない
+        self.assertEqual(self.probed, [])
+
+    def test_missing_notice(self):
+        # 起動から 10 秒は出さない。何も届かないまま過ぎたら出し、USB のシリアルポートの数も添える
+        self.fake_ports([], {})
+        self.assertFalse(self.app.ui_status()["missing"])
+        self.app.last_serial_data -= d.CONTROLLER_MISSING + 1
+        st = self.app.ui_status()
+        self.assertTrue(st["missing"])
+        self.assertEqual(st["usb_ports"], 0)   # ドライバが入っていない時など
+        self.app.last_serial_data = time.monotonic()   # 届いたら消える
+        self.assertFalse(self.app.ui_status()["missing"])
+
+    def test_missing_notice_not_for_fake_sliders(self):
+        self.c.com_port = "socket://127.0.0.1:9"
+        self.app.last_serial_data -= d.CONTROLLER_MISSING + 1
+        self.assertFalse(self.app.ui_status()["missing"])
 
     def test_firmware_sends_id(self):
         ino = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),

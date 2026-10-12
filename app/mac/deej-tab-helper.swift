@@ -703,6 +703,10 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
         return frontApp()
     case "apps":
         return ["apps": runningApps()]
+    case "app_of":
+        // pid のアプリ (Helper などの子プロセスは親のアプリ)。拡張機能をつないできたブラウザを調べるのに使う
+        guard let pid = (msg["pid"] as? NSNumber)?.int32Value, pid > 0 else { throw Fail("pid がありません") }
+        return ["name": appFor(pid: pid)?.name ?? NSNull()]
     case "names":
         let paths = (msg["paths"] as? [String]) ?? []
         var names: [String: String] = [:]
