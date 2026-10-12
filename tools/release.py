@@ -2,6 +2,7 @@
 
     app\\.venv\\Scripts\\python tools\\release.py          今ある deej-tab.exe を使う
     app\\.venv\\Scripts\\python tools\\release.py --build  先に deej-tab.exe を作り直す
+    app\\.venv\\Scripts\\python tools\\release.py --firmware  ファームウェアの zip だけを FW_VERSION の名前で作る
 
 できるもの (release/):
   deej-tab-<版>-windows.zip        deej-tab.exe
@@ -34,6 +35,11 @@ def ext_version():
         return json.load(f)["version"]
 
 
+def fw_version():
+    with open(os.path.join(ROOT, "firmware", "deej-6ch-led", "deej-6ch-led.ino"), encoding="utf-8") as f:
+        return re.search(r'FW_VERSION\[\] = "([^"]+)"', f.read()).group(1)
+
+
 def make_zip(name, files):
     """files: [(元のパス, zip の中の名前)]"""
     path = os.path.join(OUT, name)
@@ -57,7 +63,15 @@ def tree(folder, prefix):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", action="store_true", help="先に deej-tab.exe を作り直す")
+    ap.add_argument("--firmware", action="store_true", help="ファームウェアの zip だけを FW_VERSION の名前で作る")
     args = ap.parse_args()
+
+    if args.firmware:
+        fv = fw_version()
+        os.makedirs(OUT, exist_ok=True)
+        print(f"release/ に作ります (ファームウェア {fv})")
+        make_zip(f"deej-tab-firmware-{fv}.zip", tree(os.path.join(ROOT, "firmware"), "firmware"))
+        return
 
     if args.build:
         subprocess.run([sys.executable, os.path.join(APP, "build.py")], check=True)

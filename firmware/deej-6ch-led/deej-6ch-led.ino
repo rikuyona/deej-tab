@@ -1,7 +1,7 @@
 // deej-6ch-led: スライダー 5 本 (LED 付き) + ノブ 1 つの deej 互換ファームウェア
 //
 // 送信 (Nano → PC): 公式 deej と同じ "v0|v1|v2|v3|v4|v5\n" (0〜1023)
-//   起動した時と @I を受け取った時だけ "@ID|deej-6ch-led|1.3|A1B2C3D4" (このコントローラーの ID。公式 deej は読み飛ばす)。
+//   起動した時と @I を受け取った時だけ "@ID|deej-6ch-led|1.3.3|A1B2C3D4" (このコントローラーの ID。公式 deej は読み飛ばす)。
 //   CH340 には USB のシリアル番号がなく、別の USB の口に差すと COM 番号が変わるので、deej-tab はこの ID で探し直す
 // 受信 (PC → Nano): LED の指示 (deej-tab 1.2 以降。app/leds.py と同じ取り決め)
 //   @L|g|m0|m1|m2|m3|m4   g = 0 普通 / 1 一時停止
@@ -21,7 +21,7 @@
 #include <EEPROM.h>
 
 const char FW_NAME[] = "deej-6ch-led";
-const char FW_VERSION[] = "1.3";
+const char FW_VERSION[] = "1.3.3";
 
 const int NUM_SLIDERS = 6;
 const int NUM_LEDS = 5;
@@ -90,6 +90,7 @@ const unsigned long PC_TIMEOUT_MS = 3000;
 const unsigned long METER_TIMEOUT_MS = 300;
 const int TOUCH_THRESHOLD = 8;      // これ以上動いたら「操作した」(ノイズで光らないように)
 const int OVERSAMPLE = 8;           // 1 回の値を何回の読み取りの平均にするか (実機は触っていなくても ±6 揺れた)
+const unsigned long SAMPLE_SPACING_US = 255;   // 読み取りの間隔。OVERSAMPLE 回で LED の PWM の 1 周期 (2040µs) になる
 const int HOLD = 3;                 // 平均してもこれ未満の変化は前の値のまま (端の 0 / 1023 は必ず出す)
 
 int analogValues[NUM_SLIDERS];
@@ -415,10 +416,17 @@ void readSerial() {
   }
 }
 
+// 読み取りは LED の PWM の 1 周期 (D3 / D9 / D10 は 490Hz で 2040µs、D5 / D6 はその半分) に等間隔に散らす。
+// LED の電流で GND が少し浮くので、続けて読むと点いた瞬間・消えた瞬間のどちらを拾うかで値が揺れ、
+// 操作して LED が明るくなるたびに触っていないスライダーまで揺れた (基板版で抵抗を 150Ω にしてから目立った)
 int readAveraged(int pin) {
   analogRead(pin);   // ピンを切り替えた直後の 1 回は前のピンの電圧が残るので捨てる
   long sum = 0;
-  for (int k = 0; k < OVERSAMPLE; k++) sum += analogRead(pin);
+  unsigned long start = micros();
+  for (int k = 0; k < OVERSAMPLE; k++) {
+    while (micros() - start < (unsigned long)k * SAMPLE_SPACING_US) {}
+    sum += analogRead(pin);
+  }
   return (int)((sum + OVERSAMPLE / 2) / OVERSAMPLE);
 }
 
