@@ -36,7 +36,7 @@ import updater
 
 log = logging.getLogger("deej-tab")
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 LINE_RE = re.compile(r"^\d{1,4}(\|\d{1,4})*$")
 # コントローラーの ID の行 (ファームウェア deej-6ch-led 1.3 以降): @ID|名前|版|8 桁の 16 進
