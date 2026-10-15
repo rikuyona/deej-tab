@@ -7,6 +7,7 @@
   止め、入れ終わったら起動し直す (/deejrestart=1)
 - zip 版・Mac・ソースから動かしている時は、知らせてダウンロードのページを開くだけ
 - 送るのは普通の HTTPS の問い合わせだけ (GitHub の公開されている一覧を読む)。設定 (update_check) で止められる
+- Mac は certifi の証明書で確かめる (Python が作った環境の証明書の置き場所を見に行き、配った .app では見つからないため)
 """
 
 import hashlib
@@ -82,13 +83,24 @@ def latest_release(releases, kind):
     return best
 
 
+def ssl_context():
+    """HTTPS の証明書の確かめ方。Mac は certifi の証明書を使う (None なら Python の既定)。
+    Mac の Python (Homebrew・python.org) は、作った環境の証明書の置き場所 (/opt/homebrew/etc/openssl@3 など) を
+    見に行くので、それがない Mac に配った .app では CERTIFICATE_VERIFY_FAILED になる。Windows は OS の証明書を読む"""
+    if sys.platform != "darwin":
+        return None
+    import ssl
+    import certifi
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def fetch_releases(version):
     """GitHub から releases の一覧を読む"""
     req = urllib.request.Request(RELEASES_API, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": f"deej-tab/{version}",
     })
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT, context=ssl_context()) as r:
         return json.load(r)
 
 
