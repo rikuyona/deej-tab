@@ -72,11 +72,14 @@ GLIDE_INTERVAL = 0.03        # 秒。ゆっくりついてくる時に音量を�
 GLIDE_DONE = 0.005           # 目標との差がこれ以下になったら目標に合わせて終わる
 UNITY_SNAP = 0.02            # 100% の位置の前後これだけは 100% ちょうどに吸い付かせる
 CAL_MARGIN = 8               # 端の位置を合わせる時、測った端からこれだけ内側を 0% / 100% にする (端で揺れても確実に届くように)
+QUANT_HYST = 5               # 生の値。1% の境目からこれだけ離れるまでは前の位置のまま (境目で揺れて 90%↔91% を行き来しないように)
 
 SESSION_REFRESH_MIN = 5.0    # 秒。これより短い間隔ではセッション一覧を取り直さない
 SESSION_REFRESH_MAX = 45.0   # 秒。これより古い一覧はスライダー操作時に取り直す
 CONFIG_POLL = 2.0            # 秒。config.yaml の更新確認間隔
 SERIAL_STALE = 5.0           # 秒。これだけ何も届かなければ繋ぎ直す (スリープ復帰後の固まり対策)
+SERIAL_PARTIAL_WAIT = 0.02   # 秒。行の途中までしか届いていない時、続きを待つ時間 (1 バイトごとに読み直さないように)
+SERIAL_LINE_MAX = 1024       # バイト。改行が来ないままこれだけ溜まったら捨てる (改行を送らないほかの機器)
 CONTROLLER_MISSING = 10.0    # 秒。これだけコントローラーから何も届かなければ、設定画面に「見つかりません」を出す
 # 互換品の Nano の USB (CH340) のドライバ。設定画面の「見つかりません」から開く (ほかの URL は開かない)
 DRIVER_URL = "https://www.wch-ic.com/downloads/CH341SER_EXE.html"
@@ -833,6 +836,35 @@ def probe_port(device, baud, timeout=PROBE_TIME):
     return {"id": None} if values else None
 
 
+class SerialLines:
+    """シリアルから届いた分をまとめて読み、改行ごとに区切る。
+    pyserial の readline は 1 バイトずつ読み、そのたびに Win32 API を 4〜5 回呼ぶ。
+    Nano は毎秒 1000 バイト近く送ってくるので、それだけで常駐中の CPU の大半を使っていた"""
+
+    def __init__(self, port):
+        self.port = port
+        self.buf = bytearray()
+
+    def read(self):
+        """(何か届いたか, そろった行のリスト)。何も届いていなければ 1 バイト目を port の timeout まで待つ。
+        行は改行と前後の空白を取った文字列。途中までの行は次に読んだ分とつなぐ"""
+        data = self.port.read(self.port.in_waiting or 1)
+        if not data:
+            return False, []
+        # 届いている分は読み切る。socket:// (仮スライダー) の in_waiting は届いているかどうか (0 か 1) しか返さない
+        while len(data) < SERIAL_LINE_MAX:
+            n = self.port.in_waiting
+            if not n:
+                break
+            data += self.port.read(n)
+        self.buf += data
+        *lines, rest = self.buf.split(b"\n")
+        self.buf = bytearray(rest)
+        if len(self.buf) > SERIAL_LINE_MAX:
+            self.buf.clear()
+        return True, [ln.decode("ascii", "ignore").strip() for ln in lines]
+
+
 def find_controller(device_id, baud, ports):
     """ports の中からコントローラーを探す。device_id が分かっていれば同じ ID のものだけ、
     分からなければ (ID を送らない古いファームウェア) スライダーの値を送ってくる最初のもの。(ポート, 情報) か None"""
@@ -922,11 +954,13 @@ class DeejTab:
         self.client_browsers = {}    # {拡張機能の接続: ブラウザのプロセス名 (わからなければ None)}
         self.request_quit = self.shutdown   # --quit で終わる時に呼ぶ。トレイがある時は run_tray がトレイの「終了」に差し替える
         self.ui_clients = set()      # 設定画面
+        self.ui_joined = asyncio.Event()   # 設定画面がつないできた (開いていない間の ui_pump を起こす)
         self.tab_values = {}         # {slot: 音量} (1.0 = 100%。上限を上げたスライダーは 1 を超える)
         self.tab_assigned = set()    # 拡張機能でタブを割り当て済みのスロット (LED を暗くするかの判断)
         self.tab_meter = ({}, 0.0)   # 拡張機能からの音の大きさ ({slot: 0〜1}, 受け取った時刻)
         self.values = []             # スライダーごとの最後に適用した位置 (0.0〜1.0, 未受信は -1)
         self.levels = []             # 設定画面に出す今の位置 (反転後・ノイズ除去前)
+        self.quant = []              # スライダーごとの 1% 刻みの位置 (反転前。境目で揺れないように前の値を覚える)
         self.volumes = []            # 設定画面に出す今の音量 (levels を音量にしたもの)
         self.shown_levels = []       # 設定画面に実際に出す位置 (levels に揺れの抑えをかけたもの。触っていない時にちらつかないように)
         self.reapply = False         # True なら次の受信で全スライダーを適用し直す
@@ -935,6 +969,7 @@ class DeejTab:
         self.jumped = {}             # 前の行で大きく跳ねたスライダー {idx: 跳ねる前の生の値} (次の行で戻ったか見る)
         self.jump_times = collections.deque()   # 跳ねをログに残した時刻 (JUMP_LOG_MAX の数え方)
         self.skip_line = False       # True なら次の値の行は使わない (つないだ直後は途中から読んでいることがある)
+        self._line_error, self._line_error_at = None, 0.0   # 最後にログに残した行の処理のエラー (同じものを繰り返さない)
         self.calib = None            # 端の位置を測っている間 {"min": [...], "max": [...]} (その間は音量を変えない)
         self.applied = {}            # スライダーごとに実際にかけている音量 (ゆっくりついてくる途中の値)
         self.gliding = {}            # ゆっくりついてくる途中のスライダー {idx: 目標の音量}
@@ -977,122 +1012,156 @@ class DeejTab:
 
     def serial_thread(self):
         audio = self.audio_factory()
+        self._led_state = self.new_led_state()
+        while not self.stop.is_set():
+            try:
+                self._serial_loop(audio)
+            except Exception:
+                # 思わぬエラーでこのスレッドが止まると、スライダーが黙って効かなくなる。ログに残して開き直す
+                log.exception("シリアルの処理でエラーが起きたので、つなぎ直します")
+                self.serial_state = {"connected": False, "port": self.config.com_port, "error": "エラーが起きたので、つなぎ直しています"}
+                self.levels = []
+                self.stop.wait(1)
+        if self.restore_request.is_set():
+            self._restore(audio)
+
+    def _serial_loop(self, audio):
+        """コントローラーをつなぎ、届いた行で音量を変える。終了 (stop) で戻る"""
         port = None
+        reader = None
         opened_with = None
         next_config_check = 0.0
         last_data = 0.0
         stale = False                # 無通信で繋ぎ直している最中 (ログを繰り返さない)
         last_open = 0.0
         id_asked = False
-        self._led_state = self.new_led_state()
-        while not self.stop.is_set():
-            now = time.monotonic()
-            if self.restore_request.is_set():
-                self.restore_request.clear()
-                self._restore(audio)
-            if now >= next_config_check:
-                next_config_check = now + CONFIG_POLL
-                if self.config.changed_on_disk():
-                    with self.config_lock:
-                        self.reload_config()
-            wanted = (self.config.com_port, self.config.baud_rate)
-            if self.flashing.is_set():
-                # ファームウェアの書き込み中: ポートを手放して待つ
-                if port is not None:
+        try:
+            while not self.stop.is_set():
+                now = time.monotonic()
+                if self.restore_request.is_set():
+                    self.restore_request.clear()
+                    self._restore(audio)
+                if now >= next_config_check:
+                    next_config_check = now + CONFIG_POLL
+                    if self.config.changed_on_disk():
+                        with self.config_lock:
+                            self.reload_config()
+                wanted = (self.config.com_port, self.config.baud_rate)
+                if self.flashing.is_set():
+                    # ファームウェアの書き込み中: ポートを手放して待つ
+                    if port is not None:
+                        port.close()
+                        port = None
+                    self.port_released.set()
+                    self.serial_state = {"connected": False, "port": wanted[0], "error": "ファームウェアを書き込み中"}
+                    self.levels = []
+                    self.stop.wait(0.2)
+                    continue
+                if port is not None and opened_with != wanted:
                     port.close()
                     port = None
-                self.port_released.set()
-                self.serial_state = {"connected": False, "port": wanted[0], "error": "ファームウェアを書き込み中"}
-                self.levels = []
-                self.stop.wait(0.2)
-                continue
-            if port is not None and opened_with != wanted:
-                port.close()
-                port = None
-            if port is None:
-                try:
-                    port = serial.serial_for_url(wanted[0], baudrate=wanted[1], timeout=0.1, write_timeout=0.5)
-                    opened_with = wanted
-                    last_data = last_open = time.monotonic()
-                    self.values = []
-                    self.skip_line = True
-                    self._led_state.update(sent=None, broken=False, params_sent=None, cal_sent=None)
-                    self.device = None
-                    id_asked = False
-                    with self.led_lock:
-                        self.led_sim.boot(led_now())   # Nano は接続するとリセットされ、起動アニメから始まる
-                    if not stale:
-                        self.serial_state = {"connected": True, "port": wanted[0], "error": ""}
-                        log.info("シリアル接続: %s", wanted[0])
-                except Exception as e:
-                    err = str(e)
-                    if err != self.serial_state["error"]:
-                        log.warning("シリアルに接続できません (%s): %s。2秒ごとに再試行", wanted[0], e)
-                    self.serial_state = {"connected": False, "port": wanted[0], "error": err}
-                    self.levels = []
-                    if self.search_controller(wanted):
+                if port is None:
+                    try:
+                        port = serial.serial_for_url(wanted[0], baudrate=wanted[1], timeout=0.1, write_timeout=0.5)
+                        reader = SerialLines(port)
+                        opened_with = wanted
+                        last_data = last_open = time.monotonic()
+                        self.values = []
+                        self.skip_line = True
+                        self._led_state.update(sent=None, broken=False, params_sent=None, cal_sent=None)
+                        self.device = None
+                        id_asked = False
+                        with self.led_lock:
+                            self.led_sim.boot(led_now())   # Nano は接続するとリセットされ、起動アニメから始まる
+                        if not stale:
+                            self.serial_state = {"connected": True, "port": wanted[0], "error": ""}
+                            log.info("シリアル接続: %s", wanted[0])
+                    except Exception as e:
+                        err = str(e)
+                        if err != self.serial_state["error"]:
+                            log.warning("シリアルに接続できません (%s): %s。2秒ごとに再試行", wanted[0], e)
+                        self.serial_state = {"connected": False, "port": wanted[0], "error": err}
+                        self.levels = []
+                        if self.search_controller(wanted):
+                            continue
+                        self.stop.wait(2)
                         continue
-                    self.stop.wait(2)
-                    continue
-            try:
-                raw = port.readline()
-            except Exception as e:
-                log.warning("シリアル切断: %s", e)
-                self.serial_state = {"connected": False, "port": wanted[0], "error": str(e)}
-                self.levels = []
                 try:
-                    port.close()
-                except Exception:
-                    pass
-                port = None
-                continue
-            if raw:
-                last_data = self.last_serial_data = time.monotonic()
-                self._searched_ports = None   # 届いたので、また消えたり黙ったりしたら探し直せるように
-                if stale:
-                    stale = False
-                    self.serial_state = {"connected": True, "port": wanted[0], "error": ""}
-                    log.info("シリアルの受信が戻りました: %s", wanted[0])
-                line = raw.decode("ascii", "ignore").strip()
-                if line.startswith("@ID|"):
-                    self.on_device_id(line)
-                elif self.skip_line and LINE_RE.match(line):
-                    self.skip_line = False   # つないだ直後の最初の行は、途中から読んでいることがあるので使わない
-                else:
-                    self.handle_line(line, audio)
-            elif time.monotonic() - last_data > SERIAL_STALE:
-                # スリープ復帰後などに、開いたまま何も届かなくなることがあるので開き直す
-                if not stale:
-                    stale = True
-                    log.warning("シリアルから %d 秒受信がないので繋ぎ直します: %s", SERIAL_STALE, wanted[0])
-                    self.serial_state = {"connected": False, "port": wanted[0], "error": "受信なし"}
-                    self.levels = []
-                try:
-                    port.close()
-                except Exception:
-                    pass
-                port = None
-                self.search_controller(wanted, silent=True)
-                continue
-            if self.device is None and not id_asked and time.monotonic() - last_open > ID_ASK_AFTER:
-                # 起動時の ID を取りこぼした (開いてもリセットされない時など) ので聞く。古いファームウェアは無視する
-                id_asked = True
-                try:
-                    port.write(b"@I\n")
-                except Exception:
-                    pass
-            self.glide_tick(audio)
-            if not self._led_state["broken"]:
-                try:
-                    self.update_leds(port, audio)
+                    got, lines = reader.read()
                 except Exception as e:
-                    # 相手が受け取らない (古い仮スライダーなど) と書き込みが詰まるので、この接続では送らない
-                    self._led_state["broken"] = True
-                    log.warning("LED の指示を送れないので、この接続では送りません: %s", e)
-        if self.restore_request.is_set():
-            self._restore(audio)
-        if port is not None:
-            port.close()
+                    log.warning("シリアル切断: %s", e)
+                    self.serial_state = {"connected": False, "port": wanted[0], "error": str(e)}
+                    self.levels = []
+                    try:
+                        port.close()
+                    except Exception:
+                        pass
+                    port = None
+                    continue
+                if got:
+                    last_data = self.last_serial_data = time.monotonic()
+                    self._searched_ports = None   # 届いたので、また消えたり黙ったりしたら探し直せるように
+                    if stale:
+                        stale = False
+                        self.serial_state = {"connected": True, "port": wanted[0], "error": ""}
+                        log.info("シリアルの受信が戻りました: %s", wanted[0])
+                    for line in lines:
+                        try:
+                            if line.startswith("@ID|"):
+                                self.on_device_id(line)
+                            elif self.skip_line and LINE_RE.match(line):
+                                self.skip_line = False   # つないだ直後の最初の行は、途中から読んでいることがあるので使わない
+                            else:
+                                self.handle_line(line, audio)
+                        except Exception as e:
+                            # 1 行の処理の失敗で止めない (開き直すと Nano がリセットされる)
+                            self.log_line_error(e, line)
+                elif time.monotonic() - last_data > SERIAL_STALE:
+                    # スリープ復帰後などに、開いたまま何も届かなくなることがあるので開き直す
+                    if not stale:
+                        stale = True
+                        log.warning("シリアルから %d 秒受信がないので繋ぎ直します: %s", SERIAL_STALE, wanted[0])
+                        self.serial_state = {"connected": False, "port": wanted[0], "error": "受信なし"}
+                        self.levels = []
+                    try:
+                        port.close()
+                    except Exception:
+                        pass
+                    port = None
+                    self.search_controller(wanted, silent=True)
+                    continue
+                if self.device is None and not id_asked and time.monotonic() - last_open > ID_ASK_AFTER:
+                    # 起動時の ID を取りこぼした (開いてもリセットされない時など) ので聞く。古いファームウェアは無視する
+                    id_asked = True
+                    try:
+                        port.write(b"@I\n")
+                    except Exception:
+                        pass
+                self.glide_tick(audio)
+                if not self._led_state["broken"]:
+                    try:
+                        self.update_leds(port, audio)
+                    except Exception as e:
+                        # 相手が受け取らない (古い仮スライダーなど) と書き込みが詰まるので、この接続では送らない
+                        self._led_state["broken"] = True
+                        log.warning("LED の指示を送れないので、この接続では送りません: %s", e)
+                if got and not lines:
+                    # 行の途中までしか届いていない: 続きが届くのを少し待つ (すぐ読み直すと 1 バイトずつになる)
+                    self.stop.wait(SERIAL_PARTIAL_WAIT)
+        finally:
+            if port is not None:
+                try:
+                    port.close()
+                except Exception:
+                    pass
+
+    def log_line_error(self, e, line):
+        """届いた行の処理に失敗した。同じエラーは 1 分に 1 回だけログに残す (1 秒に 40 行近く届くので)"""
+        key, now = (type(e).__name__, str(e)), time.monotonic()
+        if self._line_error == key and now - self._line_error_at < 60:
+            return
+        self._line_error, self._line_error_at = key, now
+        log.error("届いた行を処理できません: %s", line, exc_info=e)
 
     def on_device_id(self, line):
         """コントローラーから ID が届いた。初めての ID なら覚える (別の USB の口に差した時に探すため)"""
@@ -1186,11 +1255,13 @@ class DeejTab:
         c = self.config
         threshold = NOISE_THRESHOLDS[c.noise]
         levels = []
+        quant = self.quant if len(self.quant) == len(parts) else [None] * len(parts)
         for idx, n in enumerate(parts):
-            p = int(c.calibrated(idx, n) * 100) / 100.0
+            p = quant[idx] = self.quantize(idx, n, quant[idx])
             if c.inverted(idx):
                 p = round(1.0 - p, 2)
             levels.append(p)
+        self.quant = quant
         self.levels = levels
         self.volumes = [c.volume(idx, p) for idx, p in enumerate(levels)]
         shown = self.shown_levels
@@ -1209,6 +1280,19 @@ class DeejTab:
                 continue
             self.values[idx] = p
             self.set_target(idx, self.volumes[idx], audio)
+
+    def quantize(self, idx, n, prev):
+        """生の値 n → 1% 刻みのスライダーの位置 (反転前)。prev は前の位置 (なければ None)。
+        前の位置との境目のすぐそば (生の値で QUANT_HYST 未満) では前の位置のままにする。触っていないスライダーが
+        境目で揺れて 90%↔91% を行き来し、そのたびに音量をかけ直していた (揺れの抑えが「なし」の時。1 秒に 9 回)。
+        両端 (0% / 100%) は必ず出す"""
+        p = self.config.calibrated(idx, n)
+        q = int(p * 100) / 100.0
+        if prev is None or q == prev or p <= 0.0 or p >= 1.0 or abs(q - prev) > 0.015:
+            return q
+        lo, hi = self.config.calibration.get(idx, leds.CAL_DEFAULT)
+        edge = lo + max(q, prev) * (hi - lo)   # 隣どうしの境目 (生の値)
+        return prev if abs(n - edge) < QUANT_HYST else q
 
     def check_jumps(self, prev, parts):
         """1 行で大きく変わったスライダーをログに残す (一瞬の爆音の診断用)。
@@ -1263,7 +1347,8 @@ class DeejTab:
             v = cur + (target - cur) * (1.0 - math.exp(-dt / tau))
             if abs(target - v) <= GLIDE_DONE:
                 v = target
-                del self.gliding[idx]
+                # 設定画面・トレイのスレッドが gliding を入れ替えていることがあるので del にしない
+                self.gliding.pop(idx, None)
             v = round(v, 3)
             self.applied[idx] = v
             self.apply(idx, v, audio)
@@ -1310,12 +1395,15 @@ class DeejTab:
                 self.picked_up(idx, self.volumes[idx])
 
     def picked_up(self, idx, v):
-        """ピックアップ待ちが終わったら True (待ちも消す)"""
-        ref = self.pickup[idx]
+        """ピックアップ待ちが終わったら True (待ちも消す)。
+        設定画面のスレッドが割り当てを変えて待ちを消していることがあるので、なければ待っていないとみなす"""
+        ref = self.pickup.get(idx)
+        if ref is None:
+            return True
         side = (v > ref) - (v < ref)
         prev = self.pickup_side.get(idx)
         if abs(v - ref) <= PICKUP_TOL or (prev is not None and side != prev):
-            del self.pickup[idx]
+            self.pickup.pop(idx, None)
             self.pickup_side.pop(idx, None)
             log.info("スライダー %d が今の音量 (%d%%) に合いました", idx + 1, round(ref * 100))
             return True
@@ -1624,7 +1712,9 @@ class DeejTab:
             self.auto.update(profile=None, exe=None, pid=0, base=None,
                              suppressed=fg if fg and self.config.auto_profile_for(fg) else None)
         log.info("プロファイルを切り替え: %s%s", name, " (自動)" if auto else "")
-        self.values = []
+        # 次の受信で全スライダーを適用し直す。values はシリアルのスレッドが使っている途中のことがあるので、
+        # ここで空にせず、シリアルのスレッドに空にさせる
+        self.reapply = True
         self.pickup_request = True
         self.after_config_change()
 
@@ -1838,7 +1928,8 @@ class DeejTab:
         return {"missing": True, "usb_ports": n}
 
     def ui_levels(self):
-        pickup = {str(i): round(self.config.position(i, ref), 3) for i, ref in self.pickup.items()}
+        # シリアルのスレッドが待ちを消すことがあるので、写しを取ってから回す (回している途中で消えると落ちる)
+        pickup = {str(i): round(self.config.position(i, ref), 3) for i, ref in dict(self.pickup).items()}
         with self.led_lock:
             led_levels = list(self.led_sim.advance(led_now()))
         # 表示は揺れの抑えをかけた位置で出す (音量・ピックアップの判定は生の levels のまま)
@@ -1881,6 +1972,7 @@ class DeejTab:
             await ws.close(1008, "forbidden origin")
             return
         self.ui_clients.add(ws)
+        self.ui_joined.set()   # 待っている ui_pump を起こす
         try:
             await ws.send(json.dumps(self.ui_config()))
             await ws.send(json.dumps(self.ui_status()))
@@ -2116,22 +2208,33 @@ class DeejTab:
         log.info("スライダー %d の設定: %s", idx + 1, o or "既定")
 
     async def ui_pump(self):
-        """設定画面にスライダー値と接続状態を送り続ける"""
+        """設定画面にスライダー値と接続状態を送り続ける。設定画面が開いていない間は、開くまで待つ"""
         last_levels = None
         last_status = None
         last_lists = time.monotonic()
+        last_error = None
         while True:
             await asyncio.sleep(UI_LEVEL_INTERVAL)
             if not self.ui_clients:
+                # 開いていない間は 1 秒に 20 回起きないように待つ (常駐中の CPU を減らす)
+                self.ui_joined.clear()
+                await self.ui_joined.wait()
+                last_lists = time.monotonic()   # 開いた時の一覧は ui_handler が送る
                 continue
-            msg = self.ui_levels()
-            if msg != last_levels:
-                last_levels = msg
-                self._broadcast_ui(json.dumps(msg))
-            status = self.ui_status()
-            if status != last_status:
-                last_status = status
-                self._broadcast_ui(json.dumps(status))
+            try:
+                msg = self.ui_levels()
+                if msg != last_levels:
+                    last_levels = msg
+                    self._broadcast_ui(json.dumps(msg))
+                status = self.ui_status()
+                if status != last_status:
+                    last_status = status
+                    self._broadcast_ui(json.dumps(status))
+            except Exception as e:
+                # 1 回の失敗でこのループが止まると、メーターが動かなくなる。同じエラーは繰り返し残さない
+                if str(e) != last_error:
+                    last_error = str(e)
+                    log.exception("設定画面へ送る値を作れません")
             if time.monotonic() - last_lists > UI_REFRESH:
                 last_lists = time.monotonic()
                 try:
@@ -2552,8 +2655,8 @@ def open_settings(port):
             cmd = [pythonw if os.path.exists(pythonw) else sys.executable, os.path.abspath(__file__), "--settings"]
         if CONFIG_ARG:
             cmd.append(CONFIG_ARG)
-        # exe (onefile) から自分を起動すると、そのままでは親の展開フォルダを使い回す。
-        # 親が先に終わる (2つ目の起動から開いた) とフォルダが消えて落ちるので、自分で展開させる
+        # exe から自分を起動する時は、親の PyInstaller の環境を引き継がず、新しく起動したものとして始めさせる
+        # (onefile だった時、親の展開フォルダを使い回し、親が先に終わるとフォルダが消えて落ちた)
         env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
         _settings_proc = subprocess.Popen(cmd, cwd=APP_DIR, env=env)
         return
@@ -2736,7 +2839,23 @@ def run_settings_window_mac(port):
     webview.start()
 
 
+def port_free(port):
+    """127.0.0.1 の port を待ち受けているものがない (bind できる) なら True。すぐ返る"""
+    import socket
+    with socket.socket() as s:
+        try:
+            s.bind(("127.0.0.1", port))   # SO_REUSEADDR は付けない (付けると使用中でも bind できてしまう)
+            return True
+        except OSError:
+            return False
+
+
 def already_running(port):
+    # Windows は待ち受けていないポートにつなぐと応答がなく、timeout の 1 秒まで待たされる。
+    # 動いていない起動 (自動起動など) が毎回 1 秒遅くなるので、先にポートが空いているかを見る。
+    # 空いていなければ (TIME_WAIT などで bind できない時も)、今までどおり /health で確かめる
+    if sys.platform == "win32" and port_free(port):
+        return False
     import urllib.request
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as r:
@@ -3035,6 +3154,19 @@ def setup_logging():
         sh = logging.StreamHandler()
         sh.setFormatter(fmt)
         root.addHandler(sh)
+
+    # 捕まえていないエラーもログに残す (exe は stderr がないので、そのままだとどこにも出ずにスレッドが止まる)
+    def thread_error(args):
+        if args.exc_type is not SystemExit:
+            log.error("スレッド %s が止まりました", args.thread.name if args.thread else "?",
+                      exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+    def main_error(t, v, tb):
+        if issubclass(t, KeyboardInterrupt):
+            sys.__excepthook__(t, v, tb)
+        else:
+            log.error("エラーで止まりました", exc_info=(t, v, tb))
+    threading.excepthook = thread_error
+    sys.excepthook = main_error
 
 
 def main():

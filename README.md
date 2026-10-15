@@ -180,7 +180,7 @@ deej-tab はメニューバーに常駐し、アイコンから設定画面を�
 - **Mac の更新**：メニューバーから deej-tab を終了し、新しい dmg の `deej-tab.app` を「Applications」へドラッグして「置き換える」。初回と同じ起動の手順がもう一度必要になることがあります（録音の許可は残ります）
 - **拡張機能の更新**：Windows（インストーラー）はフォルダの中身が自動で新しくなります。Mac・zip 版は新しい zip の中身でフォルダを置き換えます。どちらも、そのあと拡張機能のページで deej タブ音量の「再読み込み」（↻）を押します
 - **アンインストール**：Windows は「設定」→「アプリ」から（設定ファイルとログは残します）。Mac は `deej-tab.app` をゴミ箱へ
-- **インストールせずに使う（Windows）**：`deej-tab-x.y.z-windows.zip` を展開して `deej-tab.exe` を起動します（設定ファイルとログは exe の隣）。zip 版からインストーラー版に移るときは、deej-tab を終了してから、zip 版の `config.yaml` を `%LOCALAPPDATA%\Programs\deej-tab` にコピーすると設定を引き継げます
+- **インストールせずに使う（Windows）**：`deej-tab-x.y.z-windows.zip` を展開して `deej-tab.exe` を起動します（設定ファイルとログは exe の隣）。隣の `_internal` フォルダも deej-tab の一部なので、exe と一緒に置いてください（1.4.0 までは exe だけでした。更新する時は、終了してから中身を全部置き換えます）。zip 版からインストーラー版に移るときは、deej-tab を終了してから、zip 版の `config.yaml` を `%LOCALAPPDATA%\Programs\deej-tab` にコピーすると設定を引き継げます
 
 ## 使い方
 

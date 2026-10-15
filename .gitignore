@@ -8,6 +8,7 @@ __pycache__/
 app/build/
 app/mac/build/
 app/deej-tab.exe
+app/_internal/
 release/
 
 # 個人の設定・ログ (config.yaml は初回起動時に初期設定で作られる)

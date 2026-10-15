@@ -167,8 +167,28 @@ class HandleLineTest(unittest.TestCase):
         self.c.noise = "none"
         self.line(287, 0, 0, 0, 0, 0)   # 28%
         n = len(self.sent)
-        self.line(297, 0, 0, 0, 0, 0)   # 29% (0.29 - 0.28 は浮動小数で 0.01 より少し小さい)
+        self.line(302, 0, 0, 0, 0, 0)   # 29% (0.29 - 0.28 は浮動小数で 0.01 より少し小さい)。境目 (296.7) から 5 以上離れた
         self.assertEqual(len(self.sent), n + 1)
+        self.assertEqual(self.app.levels[0], 0.29)
+
+    def test_no_flicker_at_percent_boundary(self):
+        # 触っていないスライダーが 1% の境目 (920.7) をまたいで揺れても、位置は変えない
+        self.c.noise = "none"
+        self.line(918, 0, 0, 0, 0, 0)   # 89%
+        n = len(self.sent)
+        for raw in (922, 919, 923, 918, 922):
+            self.line(raw, 0, 0, 0, 0, 0)
+        self.assertEqual(len(self.sent), n)
+        self.assertEqual(self.app.levels[0], 0.89)
+        self.line(926, 0, 0, 0, 0, 0)   # 境目から 5 以上動かせば変わる
+        self.assertEqual(self.app.levels[0], 0.9)
+        self.assertEqual(len(self.sent), n + 1)
+
+    def test_ends_are_always_reached(self):
+        self.c.noise = "none"
+        self.line(1020, 2, 0, 0, 0, 0)   # 99% / 0%
+        self.line(1023, 0, 0, 0, 0, 0)   # 端はすぐ 100% / 0%
+        self.assertEqual(self.app.levels[:2], [1.0, 0.0])
 
     def test_shown_levels_ignore_noise(self):
         self.line(512, 0, 0, 0, 0, 0)

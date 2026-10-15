@@ -55,11 +55,13 @@ Name: "autostart"; Description: "{cm:AutoStart}"
 Name: "desktopicon"; Description: "{cm:DesktopIcon}"; Flags: unchecked
 
 [InstallDelete]
-; 拡張機能は前の版で消したファイルが残らないよう入れ直す
+; 拡張機能と exe の部品 (_internal) は、前の版で消したファイルが残らないよう入れ直す
 Type: filesandordirs; Name: "{app}\extension"
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Files]
 Source: "..\app\deej-tab.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\app\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
