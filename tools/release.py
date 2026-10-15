@@ -6,7 +6,7 @@
 
 できるもの (release/):
   deej-tab-<版>-setup.exe          Windows のインストーラー (Inno Setup 6 が要る。installer/deej-tab.iss)
-  deej-tab-<版>-windows.zip        deej-tab.exe
+  deej-tab-<版>-windows.zip        deej-tab.exe と _internal フォルダ
   deej-tab-extension-<版>.zip      Chrome 拡張機能 (展開して「パッケージ化されていない拡張機能を読み込む」)
   deej-tab-firmware-<版>.zip       Nano 用ファームウェア
 
@@ -97,14 +97,15 @@ def main():
         subprocess.run([sys.executable, os.path.join(APP, "build.py")], check=True)
 
     exe = os.path.join(APP, "deej-tab.exe")
-    if not os.path.exists(exe):
-        sys.exit("app/deej-tab.exe がありません。--build を付けて実行してください")
+    internal = os.path.join(APP, "_internal")   # exe が使う部品 (exe と同じフォルダに置く)
+    if not os.path.exists(exe) or not os.path.isdir(internal):
+        sys.exit("app/deej-tab.exe と app/_internal がありません。--build を付けて実行してください")
 
     v, ev = app_version(), ext_version()
     os.makedirs(OUT, exist_ok=True)
     print(f"release/ に作ります (アプリ {v} / 拡張機能 {ev})")
     make_setup(v)
-    make_zip(f"deej-tab-{v}-windows.zip", [(exe, "deej-tab/deej-tab.exe")])
+    make_zip(f"deej-tab-{v}-windows.zip", [(exe, "deej-tab/deej-tab.exe")] + tree(internal, "deej-tab/_internal"))
     make_zip(f"deej-tab-extension-{ev}.zip", tree(os.path.join(ROOT, "extension"), "deej-tab-extension"))
     make_zip(f"deej-tab-firmware-{v}.zip", tree(os.path.join(ROOT, "firmware"), "firmware"))
 

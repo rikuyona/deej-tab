@@ -2,7 +2,9 @@
 
     .venv\\Scripts\\python build.py
 
-できた exe は app フォルダ (config.yaml の隣) に置く。
+できた exe と _internal フォルダは app フォルダ (config.yaml の隣) に置く。
+1 ファイルの exe (onefile) にしないのは、起動のたびに中身を一時フォルダに展開して 0.7 秒ほど遅くなり、
+展開する親と本体の 2 つのプロセスが動くため (設定画面を開くたびにも展開していた)
 """
 
 import os
@@ -27,6 +29,10 @@ VERSION_INFO = """VSVersionInfo(
 )
 """
 
+# 入れない部品: Pillow の AVIF・WebP・フォント (FreeType)・色の管理・ImageMath・Tk。
+# アイコンを描いて ICO・PNG にするだけなので使わない。どれもなくても Pillow は動く (AVIF だけで 8MB ある)
+EXCLUDE = ("PIL._avif", "PIL._webp", "PIL._imagingft", "PIL._imagingcms", "PIL._imagingmath", "PIL._imagingtk")
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUILD = os.path.join(HERE, "build")
 
@@ -48,7 +54,7 @@ def main():
 
     subprocess.run([
         sys.executable, "-m", "PyInstaller",
-        "--noconfirm", "--clean", "--onefile", "--windowed",
+        "--noconfirm", "--clean", "--onedir", "--windowed",
         "--name", "deej-tab",
         "--icon", icon,
         "--version-file", version,
@@ -60,18 +66,24 @@ def main():
         "--hidden-import", "pystray._win32",
         # pyserial の socket:// (仮スライダー) なども実行時に読み込まれるので入れておく
         "--collect-submodules", "serial.urlhandler",
+        *[a for m in EXCLUDE for a in ("--exclude-module", m)],
         "--distpath", os.path.join(BUILD, "dist"),
         "--workpath", os.path.join(BUILD, "work"),
         "--specpath", BUILD,
         "deej_tab.py",
     ], check=True)
 
+    dist = os.path.join(BUILD, "dist", "deej-tab")
     exe = os.path.join(HERE, "deej-tab.exe")
     try:
-        shutil.copy2(os.path.join(BUILD, "dist", "deej-tab.exe"), exe)
+        shutil.copy2(os.path.join(dist, "deej-tab.exe"), exe)
     except PermissionError:
         sys.exit("\ndeej-tab.exe が起動中のため置き換えられません。トレイのアイコンから終了して、もう一度実行してください。")
-    print("\nできました:", exe)
+    # 前の版の部品が残らないよう、_internal は消してから置く
+    internal = os.path.join(HERE, "_internal")
+    shutil.rmtree(internal, ignore_errors=True)
+    shutil.copytree(os.path.join(dist, "_internal"), internal)
+    print("\nできました:", exe, "(と _internal フォルダ)")
 
 
 if __name__ == "__main__":

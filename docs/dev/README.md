@@ -60,7 +60,7 @@ start.bat
 | 配布用 zip を作る | `.venv\Scripts\python ..\tools\release.py --build`（`release/` にできる） |
 
 - `.venv` は別の場所からコピーすると壊れます（pip が入っていない）。壊れたら `py -3 -m venv --clear .venv` で作り直します
-- `build.py` は PyInstaller の onefile で `app/deej-tab.exe` を作ります。起動中の exe は置き換えられないので、トレイから終了してから実行します
+- `build.py` は PyInstaller の onedir で `app/deej-tab.exe` と `app/_internal` を作ります（2 つで 1 組。理由は [app.md](app.md#exebuildpy)）。起動中の exe は置き換えられないので、トレイから終了してから実行します
 
 ### コントローラーなしで試す
 
