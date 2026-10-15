@@ -277,5 +277,16 @@ class UpdateLoopTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)   # 「今すぐ確かめる」の 1 回だけ
 
 
+class SslContextTest(unittest.TestCase):
+    def test_mac_uses_certifi(self):
+        """Mac は certifi の証明書で確かめる (配った .app には Python を作った環境の証明書の置き場所がない)"""
+        ctx = updater.ssl_context()
+        if sys.platform == "darwin":
+            self.assertIsNotNone(ctx)
+            self.assertGreater(ctx.cert_store_stats()["x509_ca"], 50)
+        else:
+            self.assertIsNone(ctx)   # Windows は今までどおり Python の既定 (OS の証明書)
+
+
 if __name__ == "__main__":
     unittest.main()

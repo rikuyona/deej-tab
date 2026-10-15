@@ -333,9 +333,9 @@ class AlreadyRunningTest(unittest.TestCase):
             self.assertFalse(d.port_free(s.getsockname()[1]))
 
 
-@unittest.skipUnless(sys.platform == "win32", "exe は Windows で作る")
+@unittest.skipUnless(sys.platform in ("win32", "darwin"), "exe・.app は Windows・Mac で作る")
 class ExcludedPillowTest(unittest.TestCase):
-    """exe から外した Pillow の部品がなくても、アイコンを作れる"""
+    """exe・.app から外した Pillow の部品がなくても、アイコンを作れる (Mac の build_mac.py も build.EXCLUDE を使う)"""
 
     def test_icons_without_excluded_modules(self):
         sys.path.insert(0, APP_DIR)
@@ -344,7 +344,7 @@ class ExcludedPillowTest(unittest.TestCase):
             "import sys, os, tempfile\n"
             f"for m in {list(build.EXCLUDE)!r}: sys.modules[m] = None\n"   # None にすると import が失敗する
             f"sys.path.insert(0, {APP_DIR!r})\n"
-            "import deej_tab, appcatalog\n"
+            "import deej_tab\n"
             "from PIL import Image\n"
             "Image.init()\n"
             "path = os.path.join(tempfile.mkdtemp(), 'i.ico')\n"
@@ -353,7 +353,9 @@ class ExcludedPillowTest(unittest.TestCase):
             "assert deej_tab.icon_bytes('/favicon.ico')[:4] == b'\\x00\\x00\\x01\\x00'\n"
             "assert deej_tab.icon_bytes('/icon.png')[:4] == b'\\x89PNG'\n"
             "assert deej_tab.tray_image(False).size == (64, 64)\n"
-            "assert (appcatalog.icon_png(sys.executable) or b'\\x89PNG')[:4] == b'\\x89PNG'\n"
+            "if sys.platform == 'win32':\n"
+            "    import appcatalog\n"
+            "    assert (appcatalog.icon_png(sys.executable) or b'\\x89PNG')[:4] == b'\\x89PNG'\n"
             f"assert all(sys.modules.get(m) is None for m in {list(build.EXCLUDE)!r})\n"
             "print('ok')\n"
         )

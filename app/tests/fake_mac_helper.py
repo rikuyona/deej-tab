@@ -1,10 +1,12 @@
 """テスト用の偽の補助プログラム (mac/deej-tab-helper.swift と同じやりとりをする)
 
-覚えた状態は命令 "state" で返す。"crash" で終了する (起動し直しのテスト用)
+覚えた状態は命令 "state" で返す。"crash" で終了する (起動し直しのテスト用)。
+"hang" で返事をせずに固まる、"slow" は seconds 秒後に返事をする (固まった時のテスト用)
 """
 
 import json
 import sys
+import time
 
 state = {"gains": {}, "others": None, "exclude": [], "output": 0.5, "input": 0.8,
          "meter": None, "hotkeys": {}}
@@ -20,12 +22,18 @@ def handle(msg):
         return {"state": state}
     if cmd == "crash":
         sys.exit(1)
+    if cmd == "hang":
+        time.sleep(3600)
+    if cmd == "slow":
+        time.sleep(msg["seconds"])
+        return {}
     if cmd == "get_volume":
         return {"value": state[msg["scope"]]}
     if cmd == "set_volume":
         state[msg["scope"]] = msg["value"]
         return {}
     if cmd == "processes":
+        state["processes_output"] = msg.get("output", True)   # 今出力しているかを聞かせたか
         return {"processes": PROCESSES}
     if cmd == "set_gains":
         state["gains"].update(msg["gains"])
@@ -43,6 +51,7 @@ def handle(msg):
     if cmd == "peaks":
         return {"apps": {"discord.app": 0.5}, "others": 0.25, "master": 0.75}
     if cmd == "front":
+        state["front_full"] = msg.get("full", True)   # 全画面かを調べさせたか
         return {"name": "google chrome.app", "pid": 123, "full": False}
     if cmd == "apps":
         return {"apps": [{"name": "safari.app", "title": "Safari", "path": "/Applications/Safari.app"}]}

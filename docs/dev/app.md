@@ -204,6 +204,7 @@ deej-tab で足したキー：
 外とつながるのはここだけです（音量・設定の通信は 127.0.0.1 だけ）。
 
 - **確かめる**：起動して 60 秒後と、そのあと 1 日 1 回、GitHub の releases の一覧（`api.github.com/repos/rikuyona/deej-tab/releases`）を読みます。`update_check: false`（設定画面の「新しい版を自動で確かめる」）で止まり、「今すぐ確かめる」はオフでも確かめます。送るのは普通の HTTPS の問い合わせ（User-Agent は `deej-tab/版`）だけです
+  - Mac は certifi の証明書で確かめます（`ssl_context`）。Mac の Python は、Python を作った環境の証明書の置き場所（Homebrew なら `/opt/homebrew/etc/openssl@3/cert.pem`）を見に行くので、それがない Mac に配った .app では `CERTIFICATE_VERIFY_FAILED` で必ず失敗していました。Windows は OS の証明書を読むので今までどおりです
 - **版の選び方**：一覧から、使っている形のファイル（インストーラー版 `deej-tab-X.Y.Z-setup.exe`・zip 版 `-windows.zip`・Mac `-mac.dmg`）があるいちばん新しい版を選びます（`latest_release`）。版はタグではなくファイル名から読みます。拡張機能だけ・ファームウェアだけ・基板の Release もあり、Latest にアプリの新しい版があるとは限らないためです。下書き・プレリリースは見ません
 - **知らせる**：設定画面の上の帯（「あとで」でその版のあいだは隠す。localStorage）と「設定」→「アップデート」、トレイのメニュー（「新しい版 X があります」。押すと設定画面）
 - **更新する**（インストーラーで入れた Windows だけ）：

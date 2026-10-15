@@ -39,14 +39,27 @@ macOS 14.2 以降・Apple シリコンの Mac で動きます（アプリごと�
 
 - `CATapDescription(stereoMixdownOfProcesses:)` ＋ `muteBehavior = .mutedWhenTapped` の Tap と、出力デバイスを入れた非公開の集約デバイスを作ります。IOProc で Tap の入力（**最後の 2ch** を Tap とみなす）に倍率をかけ、出力の ch0/1 に書きます
 - 倍率が 1 のアプリは Tap を作りません（何もしない）
-- `Engine.reconcile()` が、プロセスの一覧と既定の出力デバイスの変化（リスナー＋2 秒ごと）に合わせて Tap を作り直します
+- `Engine.reconcile()` が、プロセスの一覧と既定の出力デバイスの変化（リスナー＋2 秒ごと）に合わせて Tap を作り直します。倍率が 1 でないアプリも「そのほか」も測るものもなく、Tap もなければ、プロセスの一覧は取りません（`needsTaps`）
 - 子プロセス（Chrome Helper など）は `responsibility_get_pid_responsible_for_pid`（dlsym）と、実行ファイルのパスの一番外側の `.app` で親アプリにまとめます。Chrome は更新後に `…/code_sign_clone/…/Google Chrome.app.bundle` から動くので、`NSRunningApplication` の bundleURL を先に使います
 - 自分と同じアプリ（deej-tab.app）のプロセスは対象外です
 - 音を出していない常駐アプリは「再生中」に出しません（今出力しているものだけ）
 
+### 軽くするための決まり
+
+Core Audio への問い合わせは 1 つずつ coreaudiod とのやりとりになり、補助プログラムと coreaudiod の両方の CPU を使います。1.4.0 では、常駐中の補助プログラムの CPU の大半がプロセスの一覧（`audioProcesses`）でした。
+
+- プロセスのオブジェクト → pid は変わらないので覚えておきます（`objectPids`。一覧からなくなったら忘れる）
+- 「今出力しているか」（`kAudioProcessPropertyIsRunningOutput`）はプロセスごとの問い合わせになり重いので、要る時だけ聞きます。`processes` 命令の `output: false` で聞かず、Tap の作り直しも聞きません。本体の `MacAudio.processes()`（あるかどうかの判定。LED の状態表示で 1 秒ごと）は `output: false`、設定画面の一覧（`MacCatalog`）だけが聞きます。聞くのをやめると coreaudiod の CPU が 2〜3% 下がりました
+- 最前面のアプリ（`front`、本体が 0.5 秒ごとに聞く）は、全画面かを調べるのにウィンドウの一覧を取るので、最前面のアプリが同じ間は 2 秒ごとにだけ調べ直します（`FULL_RECHECK`）。`full: false` なら調べません（`deej.current` の名前だけ要る時）
+- 測った値（1.4.0 → 1.5.0、偽の命令を送って補助プログラムだけを測った値）：何もしていない時 0.17% → 0%、`processes` を 1 秒ごと 0.36% → 0.07%、`front` を 0.5 秒ごと 0.47% → 0.23%（1 コアに対して）
+
+### 固まった時
+
+補助プログラムが落ちれば起動し直しますが（`RESTART_WAIT`）、落ちずに返事をしなくなると、命令のたびに 2 秒待たされ続けてスライダーが効かなくなります。`HANG_LIMIT`（3）回続けて返事がなければ止めて、次の命令で起動し直し、覚えている音量を送り直します。遅れてでも何か届けば数え直します（固まってはいない）。
+
 ### 録音の許可を待つ間
 
-Tap の `AudioDeviceStart` は、録音の許可の返事を待つ間止まります。ほかの命令まで止まらないよう、`set_gains` / `set_others` / `reset` / `meter` はすぐ返事をして、Tap の作り直しは後で行います。`peaks` / `processes` は作り直しを待ちません（`tapsLock`）。作り直しに 0.5 秒以上かかったらログに出します。
+Tap の `AudioDeviceStart` は、録音の許可の返事を待つ間止まります。ほかの命令まで止まらないよう、`set_gains` / `set_others` / `reset` / `meter` はすぐ返事をして、Tap の作り直しは後で行います。`peaks` / `processes` は作り直しを待ちません（`tapsLock`）。作り直しに 0.5 秒以上かかったらログに出します。時間はスリープしている間を数えない時計（`systemUptime`）で測ります。`Date` で測っていた時は、作り直しの途中で眠った時間まで入り、「976 秒かかりました」という誤った記録が残っていました（スリープの記録と一致）。
 
 ### そのほか
 
@@ -62,6 +75,7 @@ Tap の `AudioDeviceStart` は、録音の許可の返事を待つ間止まり�
   - `hdiutil create`（UDZO・HFS+）だけで作ります。ウィンドウの背景やアイコンの位置は付けていません（Finder を AppleScript で動かす必要があり、作る環境によって失敗しやすいため）
   - `.app` は `ditto` で写します（署名を壊さないため）
 - Apple の公証（notarization）は受けていません（Apple Developer Program が要る）。macOS 15 からは右クリックの「開く」で警告を飛ばせなくなったので、README ではシステム設定の「このまま開く」を案内しています
+- Pillow のうち使わない部品は入れません（Windows の `build.EXCLUDE` と同じ。.app は 37MB → 29MB、dmg は 18.7MB → 15.4MB）。外しても描けることは `test_robust.py` で確かめます。新しい版の確認に使う certifi の証明書は PyInstaller が `Resources/certifi` に入れます
 - Info.plist に `LSUIElement`（メニューバーだけに出る）・`NSAudioCaptureUsageDescription`・`LSMinimumSystemVersion` を入れます
 - 自己署名の条件を `identifier "io.github.rikuyona.deej-tab"` にしています。自己署名は中身のハッシュで同じアプリかを見るため、そのままだと作り直すたびに録音の許可が外れました
 
@@ -77,6 +91,8 @@ Tap の `AudioDeviceStart` は、録音の許可の返事を待つ間止まり�
 テスト・Swift のコンパイル（警告のみ）・lipo、全体の音量、アプリごとの音量（Chrome の音が 100% / 0% で鳴る・消える）、`deej.current`・`deej.unmapped`（unmapped を下げても coreaudiod の CPU は +3% 程度）、設定画面とアプリ選択・アイコン、本物の Nano（`/dev/cu.usbserial-110` を自動で見つけた）・LED、Chrome 拡張機能（そのまま動く。Option+Shift+1 で割り当て）、メニューバー・一時停止・ログイン時の自動起動・ショートカット。
 
 1.4.0：`build_mac.py`（ファームウェアの HEX と `.ino` が `.app` に入る）、設定画面からのファームウェアの書き込み（`/dev/cu.usbserial-20220`、57600bps・約 10 秒。書いたあと同じ ID でつなぎ直す）、「コントローラーが見つかりません」の表示（ドライバの行は出さない）と同梱のファームウェアの版、メニューバーありで `--quit`（1 秒で止まる）、拡張機能をつないできたブラウザの判定（Chrome で `google chrome.app`）。
+
+1.5.0：テスト（Mac で全部）、`build_mac.py`、certifi の証明書で GitHub の一覧を読めること（証明書の置き場所を消した Python で）。シリアルのまとめ読みは Mac でも効きます（pyserial の `readline` は Mac でも 1 バイトずつ読む）。偽の Nano（pty から毎秒 40 行、DummyAudio、トレイなし）で本体全体が 2.27% → 1.40%、補助プログラムが 0.40% → 0.23%（最前面の確認だけ）。本物の音量を変える確認（Tap あり）と .app の起動は、ユーザーの環境で確かめる。
 
 集約デバイスの入力は Tap の 2ch だけでした（確認した Mac の出力デバイスの場合）。
 

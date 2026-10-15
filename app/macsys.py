@@ -28,6 +28,7 @@ DATA_DIR = os.path.join(os.path.expanduser("~/Library/Application Support"), "de
 
 REQUEST_TIMEOUT = 2.0     # 秒。補助プログラムの返事を待つ時間
 RESTART_WAIT = 3.0        # 秒。補助プログラムが落ちたら、これだけ空けてから起動し直す
+HANG_LIMIT = 3            # 回。続けてこれだけ返事がなければ、固まったとみなして起動し直す
 PROCESS_CACHE = 1.0       # 秒。音を扱っているアプリの一覧を使い回す時間
 PEAK_CACHE = 0.04         # 秒。音の大きさを使い回す時間 (LED 1 回分の計算で何度も聞かないように)
 METER_KEEP = 2.0          # 秒。これだけ聞かれなかったアプリは、音の大きさを測るのをやめる
@@ -56,6 +57,7 @@ class Helper:
         self.on_restart = []       # 起動し直した時に呼ぶ関数 (補助プログラムが覚えていた設定を送り直す)
         self.started = 0           # 起動した回数
         self.failed_at = 0.0
+        self.missed = 0            # 続けて返事がなかった回数 (何か届けば 0 に戻す)
 
     def _alive(self):
         return self.proc is not None and self.proc.poll() is None
@@ -68,6 +70,7 @@ class Helper:
         threading.Thread(target=self._read, args=(self.proc,), daemon=True, name="helper-out").start()
         threading.Thread(target=self._read_err, args=(self.proc,), daemon=True, name="helper-err").start()
         self.started += 1
+        self.missed = 0
         if self.started > 1:
             log.info("補助プログラムを起動し直しました")
             for cb in list(self.on_restart):
@@ -92,6 +95,7 @@ class Helper:
                 except Exception as e:
                     self.failed_at = time.monotonic()
                     raise HelperError(f"補助プログラムを起動できません: {e}")
+            proc = self.proc
             rid = self.next_id
             self.next_id += 1
             slot = {"ev": threading.Event(), "res": None}
@@ -105,11 +109,24 @@ class Helper:
                 raise HelperError(f"補助プログラムに送れません: {e}")
         if not slot["ev"].wait(timeout):
             self.waiting.pop(rid, None)
+            self._missed(proc)
             raise HelperError(f"補助プログラムの返事がありません ({cmd})")
         res = slot["res"] or {"error": "補助プログラムが終了しました"}
         if "error" in res:
             raise HelperError(res["error"])
         return res
+
+    def _missed(self, proc):
+        """返事がなかった。続けて HANG_LIMIT 回なら、落ちずに固まっているとみなして止める (次の命令で起動し直し、
+        覚えていた音量を送り直す)。止めないと、命令のたびに返事を待たされ続け、スライダーが効かなくなる"""
+        with self.lock:
+            if proc is not self.proc or not self._alive():
+                return
+            self.missed += 1
+            if self.missed >= HANG_LIMIT:
+                log.warning("補助プログラムが %d 回続けて返事をしないので、起動し直します", self.missed)
+                self.missed = 0
+                self._kill()
 
     def _kill(self):
         self.failed_at = time.monotonic()
@@ -132,6 +149,9 @@ class Helper:
                     except Exception as e:
                         log.warning("補助プログラムからの知らせの処理に失敗: %s", e)
                 continue
+            if proc is self.proc:
+                # 遅れてでも返事が来るなら、固まってはいない (ショートカットの知らせは別のスレッドから来るので数えない)
+                self.missed = 0
             slot = self.waiting.pop(msg.get("id"), None)
             if slot:
                 slot["res"] = msg
@@ -232,10 +252,12 @@ class MacAudio:
         return float(self.h.request("get_volume", scope="input")["value"])
 
     def processes(self):
-        """音を扱っているアプリ {名前: {"title", "path", "output"}} (少しの間使い回す)"""
+        """音を扱っているアプリ {名前: {"title", "path"}} (少しの間使い回す)。あるかどうか (has_session) だけに使うので、
+        今出力しているか (output) は聞かない。聞くとプロセスごとに coreaudiod への問い合わせが増え、
+        LED の判定で 1 秒ごとに聞くだけで coreaudiod の CPU が 2〜3% 増えていた (設定画面の一覧は MacCatalog が聞く)"""
         at, procs = self._procs
         if time.monotonic() - at > PROCESS_CACHE:
-            procs = {p["name"]: p for p in self.h.request("processes")["processes"]}
+            procs = {p["name"]: p for p in self.h.request("processes", output=False)["processes"]}
             self._procs = (time.monotonic(), procs)
         return procs
 
@@ -329,7 +351,7 @@ class MacAudio:
 
     def foreground_process_name(self):
         try:
-            return self.h.request("front").get("name")
+            return self.h.request("front", full=False).get("name")   # 名前だけ (全画面かは調べさせない)
         except Exception:
             return None
 

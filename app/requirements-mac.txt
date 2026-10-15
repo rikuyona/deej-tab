@@ -6,4 +6,5 @@ psutil
 pystray
 pillow
 pywebview
+certifi
 pyinstaller

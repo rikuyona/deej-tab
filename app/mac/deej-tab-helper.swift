@@ -191,19 +191,37 @@ struct AudioProc {
     let output: Bool
 }
 
-/// 音を扱っているプロセス (Core Audio のクライアント)。自分 (と同じアプリ = deej-tab) は除く
-func audioProcesses() -> [AudioProc] {
+// プロセスのオブジェクト → pid (変わらないので覚えておく)。Core Audio への問い合わせは 1 回ずつ coreaudiod とやりとりし、
+// 一覧を取るたびに全プロセスの pid を聞くと、補助プログラムと coreaudiod の CPU の大半になっていた
+var objectPids: [AudioObjectID: pid_t] = [:]
+let objectPidsLock = NSLock()
+
+/// 音を扱っているプロセス (Core Audio のクライアント)。自分 (と同じアプリ = deej-tab) は除く。
+/// output = false なら「今出力しているか」を聞かない (output はいつも false。Tap の作り直しには要らない)
+func audioProcesses(output: Bool = true) -> [AudioProc] {
     var result: [AudioProc] = []
     var alive = Set<pid_t>()
-    for id in getObjectList(systemObject, address(kAudioHardwarePropertyProcessObjectList)) {
-        guard let pid = getValue(id, address(kAudioProcessPropertyPID), pid_t(0)), pid > 0 else { continue }
+    let ids = getObjectList(systemObject, address(kAudioHardwarePropertyProcessObjectList))
+    let idSet = Set(ids)
+    objectPidsLock.lock()
+    var known = objectPids.filter { idSet.contains($0.key) }   // なくなったオブジェクトは忘れる
+    objectPidsLock.unlock()
+    for id in ids {
+        if known[id] == nil {
+            guard let p = getValue(id, address(kAudioProcessPropertyPID), pid_t(0)), p > 0 else { continue }
+            known[id] = p
+        }
+        let pid = known[id]!
         alive.insert(pid)
         if pid == ownPid { continue }
         guard let app = appFor(pid: pid) else { continue }
         if let own = ownApp, app.name == own { continue }
-        let running = getValue(id, address(kAudioProcessPropertyIsRunningOutput), UInt32(0)) ?? 0
+        let running = output ? getValue(id, address(kAudioProcessPropertyIsRunningOutput), UInt32(0)) ?? 0 : 0
         result.append(AudioProc(objectID: id, pid: pid, app: app, output: running != 0))
     }
+    objectPidsLock.lock()
+    objectPids = known
+    objectPidsLock.unlock()
     forgetPids(except: alive)
     return result
 }
@@ -433,15 +451,13 @@ final class Engine {
 
     /// 今のアプリ・設定に合わせて Tap を作る・消す・倍率を変える (queue の上で呼ぶ)
     func reconcile() {
-        let started = Date()
+        // 時間はスリープしている間を数えない時計で測る (Date だと、作り直しの途中で眠った時間まで入り、
+        // 「976 秒かかりました」のような誤った記録が残っていた)
+        let started = ProcessInfo.processInfo.systemUptime
         defer {
-            let t = Date().timeIntervalSince(started)
+            let t = ProcessInfo.processInfo.systemUptime - started
             if t > 0.5 { logError(String(format: "Tap の作り直しに %.1f 秒かかりました", t)) }
         }
-        let procs = audioProcesses()
-        var groups: [String: [AudioObjectID]] = [:]
-        for p in procs { groups[p.app.name, default: []].append(p.objectID) }
-
         // 出力デバイスが変わったら (ヘッドホンをつないだ等) 全部作り直す
         let uid = defaultDevice(input: false).flatMap { getString($0, address(kAudioDevicePropertyDeviceUID)) }
         if uid != outputUID {
@@ -450,6 +466,12 @@ final class Engine {
             failedAt = [:]
         }
         guard let output = uid else { return }
+        // 横取りも測ることもしていなければ、プロセスの一覧は要らない (2 秒ごとの確認で聞かない)
+        if !needsTaps() { return }
+
+        let procs = audioProcesses(output: false)
+        var groups: [String: [AudioObjectID]] = [:]
+        for p in procs { groups[p.app.name, default: []].append(p.objectID) }
 
         // 音量
         for (app, tap) in volumeTaps {
@@ -505,6 +527,12 @@ final class Engine {
         }
     }
 
+    /// Tap が要るか (倍率が 1 でないアプリ・「そのほか」がある、音の大きさを測る、今 Tap がある)
+    func needsTaps() -> Bool {
+        gains.values.contains { $0 < 0.9999 } || (others.map { $0 < 0.9999 } ?? false)
+            || !meterApps.isEmpty || meterOthers != nil || meterMaster || !volumeTaps.isEmpty || !meterTaps.isEmpty
+    }
+
     func recentlyFailed(_ key: String) -> Bool {
         guard let t = failedAt[key] else { return false }
         return Date().timeIntervalSince(t) < 10
@@ -537,11 +565,21 @@ let engine = Engine()
 
 // MARK: - 最前面のアプリ
 
-func frontApp() -> [String: Any] {
+// 全画面かどうかの最後の答え (pid, 全画面か, 調べた時刻)。ウィンドウの一覧を取るのは重いので、
+// 最前面のアプリが同じ間は FULL_RECHECK 秒ごとにだけ調べ直す (本体は 0.5 秒ごとに聞いてくる)
+var lastFull: (pid: pid_t, full: Bool, at: TimeInterval) = (0, false, -1e9)
+let FULL_RECHECK: TimeInterval = 2.0
+
+/// 最前面のアプリ。withFull = false なら全画面かを調べない (full はいつも false)
+func frontApp(withFull: Bool = true) -> [String: Any] {
     onMain {
         guard let app = NSWorkspace.shared.frontmostApplication else { return ["name": NSNull(), "pid": 0, "full": false] }
         let pid = app.processIdentifier
         let ident = app.bundleURL.map { appFromPath($0.path) } ?? appFor(pid: pid)
+        let now = ProcessInfo.processInfo.systemUptime
+        if !withFull || (lastFull.pid == pid && now - lastFull.at < FULL_RECHECK) {
+            return ["name": ident?.name ?? NSNull(), "pid": Int(pid), "full": withFull && lastFull.full]
+        }
         // 全画面: そのアプリのいちばん手前のウィンドウが画面全体を覆っている (フルスクリーン・ボーダーレス)
         var full = false
         let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
@@ -555,6 +593,7 @@ func frontApp() -> [String: Any] {
                 break
             }
         }
+        lastFull = (pid, full, now)
         return ["name": ident?.name ?? NSNull(), "pid": Int(pid), "full": full]
     }
 }
@@ -649,7 +688,8 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
         try setVolume(input: (msg["scope"] as? String) == "input", v)
         return [:]
     case "processes":
-        let procs = audioProcesses()
+        // output: false なら「今出力しているか」を聞かない (あるかどうかだけ要る時。プロセスごとの問い合わせが減る)
+        let procs = audioProcesses(output: (msg["output"] as? Bool) ?? true)
         var apps: [String: [String: Any]] = [:]
         for p in procs {
             var a = apps[p.app.name] ?? ["name": p.app.name, "title": p.app.title, "output": false]
@@ -700,7 +740,8 @@ func handle(_ msg: [String: Any]) throws -> [String: Any] {
     case "peaks":
         return engine.peaks()
     case "front":
-        return frontApp()
+        // full: false なら全画面かを調べない (deej.current で最前面のアプリの名前だけ要る時)
+        return frontApp(withFull: (msg["full"] as? Bool) ?? true)
     case "apps":
         return ["apps": runningApps()]
     case "app_of":

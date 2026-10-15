@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -54,6 +55,28 @@ class HelperTest(unittest.TestCase):
         self.h.request("hello")
         self.assertTrue(wait_for(lambda: self.h.request("state")["state"]["gains"].get("discord.app") == 0.25))
 
+    def test_hang_restarts(self):
+        """落ちずに固まったら (HANG_LIMIT 回続けて返事がない)、止めて起動し直し、音量を送り直す"""
+        audio = macsys.MacAudio(self.h)
+        audio.set_processes({"discord.app"}, 0.5)
+        for cmd in ["hang"] + ["hello"] * (macsys.HANG_LIMIT - 1):
+            with self.assertRaises(macsys.HelperError):
+                self.h.request(cmd, timeout=0.2)
+        self.assertTrue(wait_for(lambda: not self.h._alive()))
+        self.h.failed_at = 0   # 待たずに起動し直させる
+        self.assertEqual(self.h.request("hello")["version"], 1)
+        self.assertEqual(self.h.started, 2)
+        self.assertTrue(wait_for(lambda: self.h.request("state")["state"]["gains"].get("discord.app") == 0.25))
+
+    def test_late_reply_is_not_hang(self):
+        """返事が遅れても届くなら、固まったとはみなさない"""
+        for _ in range(macsys.HANG_LIMIT + 1):
+            with self.assertRaises(macsys.HelperError):
+                self.h.request("slow", seconds=0.3, timeout=0.05)
+            self.assertTrue(wait_for(lambda: self.h.missed == 0))
+        self.assertTrue(self.h._alive())
+        self.assertEqual(self.h.started, 1)
+
 
 class MacAudioTest(unittest.TestCase):
     def setUp(self):
@@ -73,6 +96,7 @@ class MacAudioTest(unittest.TestCase):
         self.assertEqual(self.audio.get_process("spotify.app"), 1.0)
         self.assertIsNone(self.audio.get_process("notrunning.app"))
         self.assertTrue(self.audio.has_session("spotify.app"))
+        self.assertFalse(self.state()["processes_output"])   # あるかだけなので、出力しているかは聞かない (coreaudiod が重くなる)
 
     def test_unmapped(self):
         """「そのほか」を変えると、そのほかのアプリの個別の音量は消える"""
@@ -106,6 +130,10 @@ class MacAudioTest(unittest.TestCase):
 
     def test_foreground(self):
         self.assertEqual(self.audio.foreground_process_name(), "google chrome.app")
+        self.assertFalse(self.state()["front_full"])   # deej.current は名前だけ (全画面かは調べさせない)
+        with mock.patch.object(macsys, "_helper", self.h):
+            self.assertEqual(macsys.foreground(), ("google chrome.app", 123, False))
+        self.assertTrue(self.state()["front_full"])    # ゲームの追従は全画面かも要る
 
 
 class MacCatalogTest(unittest.TestCase):

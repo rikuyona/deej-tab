@@ -53,6 +53,7 @@ def build_helper():
 def build_app():
     sys.path.insert(0, HERE)
     import deej_tab
+    from build import EXCLUDE   # 入れない Pillow の部品 (Windows の build.py と同じ。理由はそちらに)
     from PIL import Image
     os.makedirs(BUILD, exist_ok=True)
 
@@ -75,6 +76,7 @@ def build_app():
         "--hidden-import", "pystray._darwin",
         "--hidden-import", "macsys",
         "--collect-submodules", "serial.urlhandler",
+        *[a for m in EXCLUDE for a in ("--exclude-module", m)],
         "--distpath", os.path.join(BUILD, "dist"),
         "--workpath", os.path.join(BUILD, "work"),
         "--specpath", BUILD,
