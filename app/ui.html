@@ -77,6 +77,10 @@
   .missing ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
   .missing li.likely { color: var(--text); }
   .missing button { margin-left: 6px; }
+  .update { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 18px; padding: 10px 16px;
+    border-radius: 10px; font-size: 13px; background: var(--panel-2); border: 1px solid var(--line); }
+  .update[hidden] { display: none; }
+  .update > span { flex: 1; }
   .fw-progress { font-weight: 500; font-variant-numeric: tabular-nums; }
   .row .t small.fw-new { color: var(--warn); }
 
@@ -437,6 +441,11 @@
       <li>それでもつながらないときは、「設定」→「コントローラー」で COM ポートを選んでください</li>
     </ul>
   </div>
+  <div class="update" id="update-banner" hidden>
+    <span id="update-banner-text"></span>
+    <button type="button" class="btn primary" id="update-banner-go"></button>
+    <button type="button" class="btn" id="update-banner-later">あとで</button>
+  </div>
   <section id="view-mix" role="tabpanel">
   <div class="profiles" id="profiles"></div>
   <h2>割り当て</h2>
@@ -571,6 +580,21 @@
         <input class="text" id="obs-password" type="password" autocomplete="off" aria-label="パスワード" style="width:170px">
         <button class="btn" id="obs-apply">保存して接続</button>
       </div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px">アップデート</h2>
+  <div class="settings">
+    <div class="row">
+      <div class="t">deej-tab の版<small id="upd-note"></small></div>
+      <b class="fw-progress" id="upd-progress" hidden></b>
+      <button class="btn" id="upd-page" hidden></button>
+      <button class="btn" id="upd-install" hidden>更新する</button>
+      <button class="btn" id="upd-check">今すぐ確かめる</button>
+    </div>
+    <div class="row">
+      <div class="t">新しい版を自動で確かめる<small>起動したときと 1 日 1 回、GitHub に最新の版を問い合わせます。送るのは、ふつうのインターネットの通信に含まれる情報だけです</small></div>
+      <label class="switch"><input type="checkbox" id="update-check" aria-label="新しい版を自動で確かめる"><span></span></label>
     </div>
   </div>
   </section>
@@ -774,6 +798,21 @@ const I18N_EN = {
   'コントローラーをつないだ USB のシリアルポート': 'The USB serial port the controller is connected to',
   'オフにすると、スライダーを動かしても音量は変わりません（メニューバーのメニューからも切り替えられます）':
     "Turn off to stop the sliders from changing the volume (also in the menu bar menu)",
+  // アップデート
+  'アップデート': 'Updates', 'deej-tab の版': 'deej-tab version', '更新する': 'Update', '今すぐ確かめる': 'Check now',
+  'あとで': 'Later', '変更点を見る': "See what's new", 'ダウンロードのページを開く': 'Open the download page',
+  '新しい版を自動で確かめる': 'Check for new versions automatically',
+  '起動したときと 1 日 1 回、GitHub に最新の版を問い合わせます。送るのは、ふつうのインターネットの通信に含まれる情報だけです':
+    'Asks GitHub for the latest version at startup and once a day. Only the information included in any ordinary internet request is sent',
+  'ダウンロードしています': 'Downloading',
+  'インストーラーを起動しました。入れ終わると自動で起動します': 'The installer has started. deej-tab restarts when it finishes',
+  'インストーラーを起動しました。いったん終了し、入れ終わると自動で起動します':
+    'The installer has started. deej-tab will quit and restart when the update is installed',
+  'インターネットにつながっていないか、GitHub に接続できません': "You're offline or GitHub can't be reached",
+  '新しい版はありません': 'No new version', '更新しています': 'Already updating',
+  'この deej-tab は、ダウンロードのページから入れ直してください': 'Update this copy of deej-tab from the download page',
+  'このファイルは確かめられないので、ダウンロードのページから入れてください': "This file can't be verified. Install it from the download page",
+  'ダウンロードしたファイルが GitHub の記録と合いません。もう一度試してください': "The downloaded file doesn't match GitHub's record. Please try again",
   'ポート番号は 1〜65535 です': 'Port must be 1–65535', '受信なし': 'No data received', 'ほかのアプリが使っているため登録できません': 'In use by another app',
   '切断されました': 'Disconnected', 'OBS との接続が切れました': 'Lost connection to OBS', 'OBS のパスワードが違います': 'Wrong OBS password',
   'OBS に接続できません (OBS が起動していて、WebSocket サーバーが有効か確認してください)': "Can't connect to OBS (make sure OBS is running and its WebSocket server is enabled)",
@@ -840,6 +879,24 @@ const I18N_EN_RE = [
   [/^コントローラーが (.+) に移ったので、つなぎ直しました$/, (m) => `The controller moved to ${m[1]}, so it was reconnected`],
   [/^OBS に接続できません: (.+)$/, (m) => `Can't connect to OBS: ${m[1]}`],
   [/^OBS との通信に失敗: (.+)$/, (m) => `Communication with OBS failed: ${m[1]}`],
+  // アップデート
+  [/^今は (.+)。確かめています…$/, (m) => `Current: ${m[1]}. Checking…`],
+  [/^新しい版 (.+) があります（今は (.+)）。「更新する」で入れ直します。設定はそのままです$/,
+    (m) => `Version ${m[1]} is available (current: ${m[2]}). Click Update to install it. Your settings are kept`],
+  [/^新しい版 (.+) があります（今は (.+)）。ダウンロードのページから入れてください$/,
+    (m) => `Version ${m[1]} is available (current: ${m[2]}). Install it from the download page`],
+  [/^今は (.+)（最新）$/, (m) => `Current: ${m[1]} (latest)`],
+  [/^今は ([\d.]+)。(.+)$/, (m) => `Current: ${m[1]}. ${trText(m[2])}`],
+  [/^今は ([\d.]+)$/, (m) => `Current: ${m[1]}`],
+  [/^deej-tab (.+) が出ています（今は (.+)）$/, (m) => `deej-tab ${m[1]} is available (current: ${m[2]})`],
+  [/^deej-tab を (.+) に更新します。いったん終了し、入れ終わると自動で起動します。設定はそのままです$/,
+    (m) => `Update deej-tab to ${m[1]}? It quits and restarts when the update is installed. Your settings are kept`],
+  [/^deej-tab (.+) に更新しました。拡張機能も新しくなっていれば、ブラウザの拡張機能のページで再読み込み（↻）してください$/,
+    (m) => `Updated deej-tab to ${m[1]}. If the extension was updated too, click reload (↻) on the browser's extensions page`],
+  [/^(.+) への更新が終わらなかったようです（今は (.+)）。もう一度試すか、ダウンロードのページから入れてください$/,
+    (m) => `The update to ${m[1]} didn't finish (current: ${m[2]}). Try again, or install it from the download page`],
+  [/^更新できません: (.+)$/, (m) => `Could not update: ${trText(m[1])}`],
+  [/^ダウンロードが途中で切れました \((\d+) \/ (\d+) バイト\)$/, (m) => `The download was cut off (${m[1]} / ${m[2]} bytes)`],
 ];
 const I18N_JP = /[぀-ヿ一-鿿]/;
 const I18N_ATTRS = ['placeholder', 'title', 'aria-label'];
@@ -1353,6 +1410,7 @@ function renderSettings() {
   document.querySelectorAll('#glide button').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.v) === Number(o.glide || 0))));
   document.getElementById('restore').checked = !!o.restore_on_pause;
   document.getElementById('pickup').checked = !!o.pickup;
+  document.getElementById('update-check').checked = o.update_check !== false;
   setHotkeyBox(document.getElementById('hk-pause'), state.hotkeys.pause);
   document.querySelectorAll('.sys').forEach((e) => { e.hidden = !state.system; });
   document.getElementById('obs-enabled').checked = !!state.obs.enabled;
@@ -1395,6 +1453,16 @@ document.querySelectorAll('#noise button').forEach((b) => b.addEventListener('cl
 document.querySelectorAll('#language button').forEach((b) => b.addEventListener('click', () => setOption('language', b.dataset.v)));
 document.getElementById('autostart').addEventListener('change', (e) => send({ type: 'set_autostart', value: e.target.checked }));
 document.getElementById('driver-page').addEventListener('click', () => send({ type: 'open_driver_page' }));
+document.getElementById('upd-check').addEventListener('click', () => send({ type: 'check_update' }));
+document.getElementById('upd-install').addEventListener('click', startUpdate);
+document.getElementById('upd-page').addEventListener('click', () => send({ type: 'open_update_page' }));
+document.getElementById('update-banner-go').addEventListener('click', startUpdate);
+document.getElementById('update-banner-later').addEventListener('click', () => {
+  updateLater = state.status.update?.latest || '';
+  try { localStorage.setItem('deej-update-later', updateLater); } catch (e) { /* 保存できない環境 */ }
+  renderUpdate();
+});
+document.getElementById('update-check').addEventListener('change', (e) => setOption('update_check', e.target.checked));
 document.getElementById('fw-flash').addEventListener('click', () => {
   const port = state.serial?.port || '';
   const v = state.status.firmware?.bundled;
@@ -1857,6 +1925,57 @@ function renderFirmware(s, dev) {
   note.classList.toggle('fw-new', isNew);
 }
 
+// 「あとで」を押した版 (その版のあいだは上のお知らせを出さない。設定のページにはいつも出す)
+let updateLater = '';
+try { updateLater = localStorage.getItem('deej-update-later') || ''; } catch (e) { /* 保存できない環境 */ }
+
+function setText(el, text) { if (el.textContent !== trText(text)) el.textContent = text; }
+
+function renderUpdate() {
+  const u = state.status.update;
+  if (!u) return;
+  const busy = u.progress !== null && u.progress !== undefined;
+  let text, isNew = false;
+  if (busy) text = u.progress >= 100 ? 'インストーラーを起動しました。入れ終わると自動で起動します' : 'ダウンロードしています';
+  else if (u.checking) text = `今は ${u.current}。確かめています…`;
+  else if (u.latest && u.can_install) { text = `新しい版 ${u.latest} があります（今は ${u.current}）。「更新する」で入れ直します。設定はそのままです`; isNew = true; }
+  else if (u.latest) { text = `新しい版 ${u.latest} があります（今は ${u.current}）。ダウンロードのページから入れてください`; isNew = true; }
+  else if (u.error) text = `今は ${u.current}。${u.error}`;
+  else if (u.checked) text = `今は ${u.current}（最新）`;
+  else text = `今は ${u.current}`;
+  const note = document.getElementById('upd-note');
+  setText(note, text);
+  note.classList.toggle('fw-new', isNew);
+  const prog = document.getElementById('upd-progress');
+  prog.hidden = !busy || u.progress >= 100;
+  if (!prog.hidden) prog.textContent = `${u.progress}%`;
+  const install = document.getElementById('upd-install');
+  install.hidden = !(u.latest && u.can_install);
+  install.disabled = busy;
+  const page = document.getElementById('upd-page');
+  page.hidden = !u.latest;
+  setText(page, u.can_install ? '変更点を見る' : 'ダウンロードのページを開く');
+  const check = document.getElementById('upd-check');
+  check.hidden = !u.kind;
+  check.disabled = u.checking || busy;
+  // 上のお知らせ (ミキサーのページからも見えるように)
+  const banner = document.getElementById('update-banner');
+  banner.hidden = !u.latest || busy || updateLater === u.latest;
+  if (!banner.hidden) {
+    setText(document.getElementById('update-banner-text'), `deej-tab ${u.latest} が出ています（今は ${u.current}）`);
+    setText(document.getElementById('update-banner-go'), u.can_install ? '更新する' : 'ダウンロードのページを開く');
+  }
+}
+
+function startUpdate() {
+  const u = state.status.update || {};
+  if (!u.latest) return;
+  if (!u.can_install) { send({ type: 'open_update_page' }); return; }
+  if (confirm(`deej-tab を ${u.latest} に更新します。いったん終了し、入れ終わると自動で起動します。設定はそのままです`)) {
+    send({ type: 'install_update' });
+  }
+}
+
 function renderStatus() {
   const s = state.serial;
   const ps = document.getElementById('pill-serial');
@@ -1865,6 +1984,7 @@ function renderStatus() {
   document.getElementById('serial-text').textContent = s?.connected ? portName + ' 接続中' : portName + ' 未接続';
   ps.title = s?.error || '';
   renderFirmware(s, state.status.device);
+  renderUpdate();
   // 見つからないときのお知らせ。Mac はドライバが要らないので、ドライバの行は出さない
   const missing = !!state.status.missing;
   document.getElementById('missing').hidden = !missing;

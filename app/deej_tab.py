@@ -32,6 +32,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 import leds
+import updater
 
 log = logging.getLogger("deej-tab")
 
@@ -111,6 +112,11 @@ UI_DATA_DIR = (os.path.join(os.path.expanduser("~/Library/Application Support"),
 UI_PROFILE_DIR = os.path.join(UI_DATA_DIR, "ui-profile")
 WINDOW_FILE = os.path.join(UI_DATA_DIR, "window.json")
 SETTINGS_LOCK = os.path.join(UI_DATA_DIR, "settings.lock")   # Mac: 設定画面を 1 枚だけにする
+# 更新: 落としたインストーラーと、更新の途中であることの印 (更新した後の最初の起動で結果を知らせて消す)
+UPDATE_DIR = os.path.join(UI_DATA_DIR, "update")
+UPDATE_PENDING = os.path.join(UPDATE_DIR, "pending.json")
+UPDATE_FIRST_DELAY = 60.0       # 秒。起動してから新しい版を確かめるまで (起動直後の処理と重ねない)
+UPDATE_INTERVAL = 24 * 3600.0   # 秒。新しい版を確かめる間隔
 DEFAULT_WINDOW = (1045, 1010)   # 論理ピクセル (150% なら実際は 1.5 倍)。window.json がない時だけ使う
 
 LANGUAGES = ("auto", "ja", "en")
@@ -125,6 +131,7 @@ TEXT_EN = {
     "deej-tab - 一時停止中 (スライダーで音量は変わりません)": "deej-tab - Paused (sliders don't change the volume)",
     "deej-tab - {port} に接続中": "deej-tab - Connected to {port}",
     "deej-tab - デバイス未接続 ({port})": "deej-tab - Controller not connected ({port})",
+    "新しい版 {version} があります": "Version {version} is available",
 }
 
 
@@ -205,6 +212,7 @@ CONFIG_HEADER = """\
 # glide: 0.3  音量がスライダーについてくるまでの時間 (秒、全スライダー)。0 ならすぐ (目標の 95% まで近づく時間)
 # restore_on_pause: 一時停止・終了した時に、Windows (全体の音量以外) と OBS の音量を deej-tab が変える前に戻す
 # pickup: プロファイルを切り替えた時、スライダーが今の音量の位置を通るまで効かせない (音量が飛ばない)
+# update_check: 起動した時と 1 日 1 回、GitHub に新しい版があるか問い合わせる (false で問い合わせない)
 # hotkeys.pause: 一時停止のショートカット (例: ctrl+alt+p)
 # language: 画面の言語 auto (Windows の表示言語に合わせる) / ja / en
 # led_mode: off / status (状態を表示) / meter (音に合わせて光る)。ファームウェア deej-6ch-led が必要
@@ -272,6 +280,7 @@ class Config:
         self.ws_port = 8765
         self.restore_on_pause = True
         self.pickup = True
+        self.update_check = True   # 新しい版を自動で確かめる
         self.glide_default = 0.0
         self.calibration = {}      # {slider_idx: (下端, 上端)} 生の値 (合わせたスライダーだけ)
         self.device_id = ""        # 最後につないだコントローラーの ID (8 桁の 16 進。分からなければ "")
@@ -303,6 +312,7 @@ class Config:
         self.ws_port = int(raw.get("websocket_port", 8765))
         self.restore_on_pause = bool(raw.get("restore_on_pause", True))
         self.pickup = bool(raw.get("pickup", True))
+        self.update_check = bool(raw.get("update_check", True))
         lang = str(raw.get("language", "auto")).lower()
         self.language = lang if lang in LANGUAGES else "auto"
         self.glide_default = parse_glide(raw.get("glide", 0.0))
@@ -774,6 +784,42 @@ def bundled_firmware():
     return None
 
 
+def update_kind():
+    """新しい版の入れ方: setup (インストーラーで入れた Windows。その場で更新できる) / zip (Windows のほかの形・ソース) /
+    mac / None (確かめない)"""
+    if IS_MAC:
+        return "mac"
+    if sys.platform != "win32":
+        return None
+    try:
+        if FROZEN and updater.installed_by_setup(APP_DIR):
+            return "setup"
+    except Exception:
+        pass
+    return "zip"
+
+
+def take_update_result():
+    """更新した後の最初の起動なら、設定画面に出すお知らせ (更新の結果)。落としたインストーラーも消す"""
+    try:
+        with open(UPDATE_PENDING, encoding="utf-8") as f:
+            pending = json.load(f)
+    except (OSError, ValueError):
+        pending = None
+    import shutil
+    shutil.rmtree(UPDATE_DIR, ignore_errors=True)   # インストーラーがまだ終わりきっていなければ、次の起動で消える
+    if not isinstance(pending, dict):
+        return None
+    want = str(pending.get("version"))
+    if want == VERSION:
+        log.info("%s から %s に更新しました", pending.get("from"), VERSION)
+        return {"type": "notice", "message": f"deej-tab {VERSION} に更新しました。拡張機能も新しくなっていれば、"
+                                             "ブラウザの拡張機能のページで再読み込み（↻）してください"}
+    log.warning("%s への更新が終わっていません (今は %s)", want, VERSION)
+    return {"type": "error", "message": f"{want} への更新が終わらなかったようです（今は {VERSION}）。"
+                                        "もう一度試すか、ダウンロードのページから入れてください"}
+
+
 def peer_browser(remote, server_port):
     """拡張機能の WebSocket をつないできたブラウザのプロセス名 (chrome.exe・msedge.exe など)。わからなければ None。
     拡張機能の通信はブラウザのプロセスがするので、相手側のポートを持っているプロセスを調べる"""
@@ -1007,6 +1053,11 @@ class DeejTab:
         self.hotkeys = None
         from obs import ObsClient
         self.obs = ObsClient(lambda: self.config.obs, on_change=self._obs_changed)
+        # 新しい版 (updater)。latest: 今より新しい版 (updater.latest_release) / progress: 更新のダウンロードの進み具合
+        self.update = {"latest": None, "checking": False, "error": "", "checked": None, "progress": None}
+        self.update_wake = asyncio.Event()   # 「今すぐ確かめる」・設定でオンにした時
+        self.update_kind = update_kind()
+        self.startup_notice = None           # 最初につないできた設定画面に送るお知らせ (更新の結果)
 
     # ---------- シリアル ----------
 
@@ -1787,6 +1838,84 @@ class DeejTab:
             if base in self.config.profiles and base != self.config.active_profile:
                 self.switch_profile(base, auto=True)
 
+    # ---------- 新しい版 ----------
+
+    def update_status(self):
+        """設定画面に出す更新の状態"""
+        u = self.update
+        latest = u["latest"]
+        return {"current": VERSION, "kind": self.update_kind,
+                "can_install": self.update_kind == "setup" and bool(latest and latest["url"]),
+                "latest": latest["version"] if latest else None,
+                "checking": u["checking"], "error": u["error"], "checked": u["checked"], "progress": u["progress"]}
+
+    async def update_loop(self):
+        """起動して少したってから、そのあとは 1 日 1 回、新しい版を確かめる (update_check がオンの時)。
+        「今すぐ確かめる」(update_wake) ならオフでも確かめる"""
+        if self.update_kind is None:
+            return
+        next_at = time.monotonic() + UPDATE_FIRST_DELAY
+        while not self.stop.is_set():
+            try:
+                await asyncio.wait_for(self.update_wake.wait(), max(0.0, next_at - time.monotonic()))
+            except asyncio.TimeoutError:
+                pass
+            manual = self.update_wake.is_set()
+            self.update_wake.clear()
+            if manual or (self.config.update_check and time.monotonic() >= next_at):
+                await self.check_update()
+                next_at = time.monotonic() + UPDATE_INTERVAL
+
+    async def check_update(self):
+        u = self.update
+        if u["checking"] or u["progress"] is not None:
+            return
+        u["checking"] = True
+        try:
+            releases = await asyncio.to_thread(updater.fetch_releases, VERSION)
+            latest = updater.latest_release(releases, self.update_kind)
+            if latest and updater.newer(latest["version"], VERSION):
+                if not u["latest"] or u["latest"]["version"] != latest["version"]:
+                    log.info("新しい版があります: %s (今は %s)", latest["version"], VERSION)
+                u["latest"] = latest
+            else:
+                u["latest"] = None
+            u["error"] = ""
+        except Exception as e:
+            log.warning("新しい版を確かめられません: %s", e)
+            u["error"] = "インターネットにつながっていないか、GitHub に接続できません"
+        finally:
+            u["checked"] = time.time()
+            u["checking"] = False
+
+    def start_update(self):
+        """設定画面の「更新する」: インストーラーを落として確かめ、起動する (別のスレッドで)"""
+        latest = self.update["latest"]
+        if not latest:
+            raise ValueError("新しい版はありません")
+        if self.update_kind != "setup" or not latest["url"]:
+            raise ValueError("この deej-tab は、ダウンロードのページから入れ直してください")
+        if self.update["progress"] is not None:
+            raise ValueError("更新しています")
+        self.update["progress"] = 0
+        threading.Thread(target=self._update, args=(dict(latest),), daemon=True, name="update").start()
+
+    def _update(self, latest):
+        try:
+            path = updater.download(latest, UPDATE_DIR, lambda p: self.update.__setitem__("progress", p))
+            # 更新した後の最初の起動で、結果を知らせるための印
+            with open(UPDATE_PENDING, "w", encoding="utf-8") as f:
+                json.dump({"version": latest["version"], "from": VERSION}, f)
+            log.info("%s に更新します (インストーラーを起動)", latest["version"])
+            updater.run_setup(path)
+            # この後インストーラーが --quit を送ってくるので、progress は 100 のまま (ボタンを押せないように)
+            self.broadcast_ui({"type": "notice",
+                               "message": "インストーラーを起動しました。いったん終了し、入れ終わると自動で起動します"})
+        except Exception as e:
+            log.warning("更新できません: %s", e)
+            self.update["progress"] = None
+            self.broadcast_ui({"type": "error", "message": f"更新できません: {e}"})
+
     # ---------- OBS ----------
 
     def _obs_changed(self):
@@ -1854,6 +1983,7 @@ class DeejTab:
             "options": {"com_port": c.com_port, "invert_sliders": c.invert,
                         "noise_reduction": c.noise, "restore_on_pause": c.restore_on_pause,
                         "pickup": c.pickup, "led_mode": c.led_mode, "glide": c.glide_default,
+                        "update_check": c.update_check,
                         "language": c.language},
             "lang": resolve_language(c.language),   # 実際に使う言語 (auto を解いたもの)
             "led_params": dict(self.led_params),
@@ -1879,6 +2009,7 @@ class DeejTab:
             "hotkey_errors": dict(self.hotkeys.errors) if self.hotkeys else {},
             **self.missing_status(),
             "firmware": {"bundled": self.firmware[1] if self.firmware else None, "progress": self.flash_progress},
+            "update": self.update_status(),
         }
 
     def start_flash(self):
@@ -1978,6 +2109,10 @@ class DeejTab:
             await ws.send(json.dumps(self.ui_status()))
             # 値は変わった時だけ送るので、今の値をここで送る (スライダーが止まっていてもメーターが出るように)
             await ws.send(json.dumps(self.ui_levels()))
+            if self.startup_notice:
+                # 更新した後の最初の起動: 結果を 1 回だけ知らせる
+                await ws.send(json.dumps(self.startup_notice))
+                self.startup_notice = None
             # 一覧は初回に少し時間がかかる (スタートメニューを読む) ので、待たずに操作を受け付ける
             asyncio.ensure_future(self.send_lists(ws))
             async for raw in ws:
@@ -2070,7 +2205,7 @@ class DeejTab:
                 value = str(value).strip()
                 if not value:
                     raise ValueError("接続先が空です")
-            elif key in ("restore_on_pause", "pickup"):
+            elif key in ("restore_on_pause", "pickup", "update_check"):
                 value = bool(value)
             elif key == "glide":
                 value = parse_glide(value)
@@ -2087,6 +2222,8 @@ class DeejTab:
             log.info("設定を変更: %s = %s", key, value)
             if key in ("com_port", "noise_reduction"):
                 self.reapply = True
+            if key == "update_check" and value:
+                self.update_wake.set()   # オンにしたら、すぐ確かめる
             self.after_config_change()
         elif t == "set_led_params":
             if not isinstance(msg.get("params"), dict):
@@ -2150,6 +2287,15 @@ class DeejTab:
             self.broadcast_ui(self.ui_config())
         elif t == "flash_firmware":
             self.start_flash()
+        elif t == "check_update":
+            self.update_wake.set()
+        elif t == "install_update":
+            self.start_update()
+        elif t == "open_update_page":
+            # 開くのはこのリポジトリの Releases のページだけ (設定画面から任意の URL を開かせない)
+            import webbrowser
+            latest = self.update["latest"]
+            webbrowser.open(latest["page"] if latest else updater.RELEASES_PAGE)
         elif t == "open_driver_page":
             import webbrowser
             webbrowser.open(DRIVER_URL)
@@ -2345,6 +2491,7 @@ class DeejTab:
                 log.info("スライダー操作は一時停止中です")
             asyncio.ensure_future(self.ui_pump())
             asyncio.ensure_future(self.obs.run())
+            asyncio.ensure_future(self.update_loop())
             if self.catalog is not None:
                 # スタートメニューの読み込みを先に済ませておく (設定画面の一覧がすぐ出るように)
                 asyncio.ensure_future(asyncio.to_thread(self.catalog.list))
@@ -3075,12 +3222,19 @@ def run_tray(app, port):
         """メニューを開くたびに今の言語で出す"""
         return lambda item: tr(s, lang())
 
+    def latest_version():
+        latest = app.update["latest"]
+        return latest["version"] if latest else None
+
     icons = {True: tray_image(True), False: tray_image(False)}
     state = dict(app.serial_state)
     icon = pystray.Icon(
         "deej-tab", icons[state["connected"] and app.config.enabled], tray_title(state, app.config.enabled, lang()),
         menu=pystray.Menu(
             pystray.MenuItem(text("設定を開く"), on_open, default=True),
+            # 新しい版があれば知らせる (押すと設定画面。更新は設定画面から)
+            pystray.MenuItem(lambda item: tr("新しい版 {version} があります", lang(), version=latest_version()), on_open,
+                             visible=lambda item: bool(latest_version())),
             pystray.MenuItem(text("一時停止 (スライダーで音量を変えない)"), on_pause,
                              checked=lambda item: not app.config.enabled),
             pystray.MenuItem(text("プロファイル"), pystray.Menu(profile_items),
@@ -3117,7 +3271,7 @@ def run_tray(app, port):
             state = dict(app.serial_state)
             enabled = app.config.enabled
             key = (state["connected"], state["port"], enabled, app.config.active_profile,
-                   tuple(app.config.profiles), app.config.language)
+                   tuple(app.config.profiles), app.config.language, latest_version())
             if key != shown:
                 shown = key
                 # 一時停止中は未接続と同じ灰色のつまみ (光らせない)
@@ -3220,6 +3374,7 @@ def main():
         audio_factory = DummyAudio
         log.warning("Windows・Mac 以外のため音量操作は行いません (タブ音量のみ)")
     app = DeejTab(config, audio_factory, catalog)
+    app.startup_notice = take_update_result()
 
     try:
         import pystray  # noqa: F401
