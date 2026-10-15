@@ -79,7 +79,7 @@ SESSION_REFRESH_MIN = 5.0    # 秒。これより短い間隔ではセッショ�
 SESSION_REFRESH_MAX = 45.0   # 秒。これより古い一覧はスライダー操作時に取り直す
 CONFIG_POLL = 2.0            # 秒。config.yaml の更新確認間隔
 SERIAL_STALE = 5.0           # 秒。これだけ何も届かなければ繋ぎ直す (スリープ復帰後の固まり対策)
-SERIAL_PARTIAL_WAIT = 0.02   # 秒。行の途中までしか届いていない時、続きを待つ時間 (1 バイトごとに読み直さないように)
+SERIAL_WAIT_RANGE = (0.002, 0.05)   # 秒。行の途中までしか届いていない時、残りが届くころまで待つ時間の下限・上限
 SERIAL_LINE_MAX = 1024       # バイト。改行が来ないままこれだけ溜まったら捨てる (改行を送らないほかの機器)
 CONTROLLER_MISSING = 10.0    # 秒。これだけコントローラーから何も届かなければ、設定画面に「見つかりません」を出す
 # 互換品の Nano の USB (CH340) のドライバ。設定画面の「見つかりません」から開く (ほかの URL は開かない)
@@ -890,6 +890,16 @@ class SerialLines:
     def __init__(self, port):
         self.port = port
         self.buf = bytearray()
+        self.line_len = 26          # 最後にそろった行の長さ (改行込みのバイト数。6 本なら 20〜26)
+
+    def partial_wait(self):
+        """行の途中までが残っていれば、残りが届くころまでの秒数 (前の行の長さから見積もる)。残っていなければ None。
+        Windows (CH340) は行の切れ目でまとめて届くので待たない。Mac は 1 バイトずつ届き、すぐ読み直すと
+        1 行あたり 2 回近くループを回っていた"""
+        if not self.buf:
+            return None
+        rate = getattr(self.port, "baudrate", 9600) / 10   # 1 秒に届くバイト数 (8N1 は 1 バイト 10 ビット)
+        return clamp((self.line_len - len(self.buf)) / rate, *SERIAL_WAIT_RANGE)
 
     def read(self):
         """(何か届いたか, そろった行のリスト)。何も届いていなければ 1 バイト目を port の timeout まで待つ。
@@ -906,6 +916,8 @@ class SerialLines:
         self.buf += data
         *lines, rest = self.buf.split(b"\n")
         self.buf = bytearray(rest)
+        if lines:
+            self.line_len = len(lines[-1]) + 1
         if len(self.buf) > SERIAL_LINE_MAX:
             self.buf.clear()
         return True, [ln.decode("ascii", "ignore").strip() for ln in lines]
@@ -1196,9 +1208,10 @@ class DeejTab:
                         # 相手が受け取らない (古い仮スライダーなど) と書き込みが詰まるので、この接続では送らない
                         self._led_state["broken"] = True
                         log.warning("LED の指示を送れないので、この接続では送りません: %s", e)
-                if got and not lines:
-                    # 行の途中までしか届いていない: 続きが届くのを少し待つ (すぐ読み直すと 1 バイトずつになる)
-                    self.stop.wait(SERIAL_PARTIAL_WAIT)
+                wait = reader.partial_wait() if got else None
+                if wait:
+                    # 行の途中までが残っている: 残りが届くころまで待つ (すぐ読み直すと 1 バイトずつになる)
+                    self.stop.wait(wait)
         finally:
             if port is not None:
                 try:

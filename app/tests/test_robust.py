@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import deej_tab as d  # noqa: E402
@@ -105,6 +106,17 @@ class SerialLinesTest(unittest.TestCase):
         r = d.SerialLines(FakePort([b"x" * (d.SERIAL_LINE_MAX + 1)]))
         self.assertEqual(read(r), (True, []))
         self.assertFalse(r.buf)
+
+    def test_partial_wait(self):
+        r = d.SerialLines(FakePort([b"1023|541|538|522|536|566\r\n", b"1023|5"]))
+        read(r)
+        self.assertIsNone(r.partial_wait())   # 行の切れ目で届いた (Windows): 待たない
+        self.assertEqual(r.line_len, 26)
+        read(r)
+        # 残り 20 バイト ÷ 960 バイト/秒 (9600bps)
+        self.assertAlmostEqual(r.partial_wait(), 20 / 960)
+        r.buf = bytearray(b"x" * 30)          # 前の行より長くなっても、下限で少しだけ待つ
+        self.assertEqual(r.partial_wait(), d.SERIAL_WAIT_RANGE[0])
 
     def test_id_and_values_in_one_read(self):
         r = d.SerialLines(FakePort([b"0|0\r\n@ID|deej-6ch-led|1.3|1E5F90CC\r\n1|1|1|1|1|1\r\n"]))
@@ -210,6 +222,60 @@ class SerialThreadTest(unittest.TestCase):
         self.nano.line = "100|100|100|100|100|100"
         self.assertTrue(wait_for(lambda: self.app.raw_values == [100] * 6))
         self.assertTrue(self.thread.is_alive())
+
+
+class TrickleTest(unittest.TestCase):
+    """Mac の実機のように 1 バイトずつ届いても、1 行あたり 1 回ほどしかループを回らない (前は 1.78 回)"""
+
+    def test_about_one_loop_per_line(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        stop = threading.Event()
+
+        def nano():
+            conn, _ = srv.accept()
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            start, i = time.perf_counter(), 0
+            try:
+                while not stop.is_set():
+                    for b in b"1023|541|538|522|536|566\r\n":
+                        # 9600bps と同じ速さ: i バイト目は送り始めてから i / 960 秒に送る
+                        i += 1
+                        wait = start + i / 960 - time.perf_counter()
+                        if wait > 0:
+                            time.sleep(wait)
+                        conn.sendall(bytes([b]))
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+        threading.Thread(target=nano, daemon=True).start()
+        c = make_config(BASE.replace("socket://127.0.0.1:9", f"socket://127.0.0.1:{srv.getsockname()[1]}")
+                        + "led_mode: off\n")
+        app = d.DeejTab(c, d.DummyAudio, system=False)
+        app.broadcast = lambda m: None
+        app.broadcast_ui = lambda m: None
+        cnt = {"reads": 0, "lines": 0}
+        orig = d.SerialLines.read
+
+        def counting(reader):
+            got, lines = orig(reader)
+            cnt["reads"] += 1
+            cnt["lines"] += len(lines)
+            return got, lines
+
+        with mock.patch.object(d.SerialLines, "read", counting):
+            th = threading.Thread(target=app.serial_thread, daemon=True)
+            th.start()
+            time.sleep(4)
+            app.stop.set()
+            th.join(3)
+        stop.set()
+        srv.close()
+        self.assertGreater(cnt["lines"], 40)
+        self.assertLess(cnt["reads"] / cnt["lines"], 1.4)   # 直す前は 1.78 回
 
 
 class RaceTest(unittest.TestCase):
