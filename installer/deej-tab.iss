@@ -74,6 +74,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
   ValueData: """{app}\deej-tab.exe"" --tray"; Tasks: autostart
 
 [Run]
+; アプリの「更新する」から /SILENT /deejrestart=1 で起動された時は、入れ終わったら起動し直す
+; (下の「起動する」のチェックは /SILENT では動かない)。設定画面を開いて、更新の結果を知らせる
+Filename: "{app}\deej-tab.exe"; Flags: nowait; Check: RestartAfterUpdate
 Filename: "{app}\deej-tab.exe"; Description: "{cm:LaunchProgram,deej-tab}"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\extension"; Description: "{cm:OpenExtension}"; Flags: shellexec nowait postinstall skipifsilent
 
@@ -92,6 +95,11 @@ begin
   if FileExists(Exe) then
     Exec(Exe, '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM deej-tab.exe /F', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+function RestartAfterUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:deejrestart|0}') = '1';
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

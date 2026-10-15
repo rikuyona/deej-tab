@@ -26,7 +26,7 @@ Nano ──USB シリアル──▶ deej-tab ──OS の音量 API──▶ �
                             └─ OBS        obs-websocket v5        → 音声ソースの音量
 ```
 
-通信は PC の中（127.0.0.1）だけで、外部には何も送りません。
+音量・設定の通信は PC の中（127.0.0.1）だけです。外とつながるのは、新しい版の確認と更新のダウンロード（GitHub の Releases）だけです（[app.md](app.md#新しい版updaterpy)）。
 
 ## フォルダ
 
@@ -114,6 +114,8 @@ Windows 版は Inno Setup 6 のインストーラー（`installer/deej-tab.iss`�
 - アンインストールでは、トレイから自動起動をオンにした時の Run の値も消します（消した exe を起動しようとしないように）
 - 「Windows によって PC が保護されました」は、コード署名をしないかぎり出ます（有料の証明書か、Azure の署名サービスが要る）。README で「詳細情報」→「実行」を案内しています
 - 完了画面の説明は長いので、欄の高さを決めて（`FinishedLabel.Height`）、その下にチェック（起動する・フォルダを開く）をずらしています。`AdjustHeight` では伸びきらなかった
+- 確かめ方の注意：インストーラーは動いている deej-tab をすべて止めます（`taskkill`）。入れた exe を一度でも起動すると、自動起動の登録がその exe に付け替わり（zip 版から移った時のための動き）、アンインストールで消えます。普段使いの自動起動は、試した後に登録し直します。入れる時は `/MERGETASKS=!autostart` で自動起動のチェックを外し、起動する前に `config.yaml`（ほかの `websocket_port`・仮スライダー）を置きます
+- アプリからの更新（[app.md](app.md#新しい版updaterpy)）を通しで試すときは、`updater.py` の問い合わせ先（`RELEASES_API`・`PAGE_PREFIX`・`DOWNLOAD_PREFIX`）だけを手元の偽の GitHub（127.0.0.1）に向けた写しで 2 つの版を作り、古い方を入れて設定画面の窓口から `check_update` → `install_update` を送ります。本物の GitHub に試しの Release は出しません
 - 確かめ方：`/VERYSILENT /DIR=作業用フォルダ` で入れ、上書き・アンインストールまで通す。画面は `/LANG=ja`・`/LANG=en` で開き、ボタン（`TNewButton`）に `BM_CLICK` を送って完了画面まで進めて撮りました
 
 ## ブランチとリリース
