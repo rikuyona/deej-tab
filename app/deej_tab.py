@@ -91,6 +91,8 @@ ID_ASK_AFTER = 2.5           # 秒。つないでからこれだけ ID が来な
 PROBE_TIME = 3.5             # 秒。コントローラーを探す時に 1 つのポートを読む時間
 TRAY_CHECK = 5.0             # 秒。トレイアイコンが消えていないかの確認間隔
 KEEPALIVE = 20.0             # 秒。拡張機能の Service Worker を維持するための ping 間隔
+PORT_WAIT = 15.0             # 秒。起動時、WebSocket のポートを終わりかけの deej-tab が離すのを待つ時間
+QUIT_GRACE = 10.0            # 秒。トレイの「終了」からこれだけ経っても終わっていなければ、そのまま落とす
 UI_LEVEL_INTERVAL = 0.05     # 秒。設定画面へスライダー値を送る間隔
 UI_REFRESH = 5.0             # 秒。設定画面へアプリ一覧・COMポート一覧を送り直す間隔
 CHANNELS = 6                 # 設定画面に出すスライダー数 (A0〜A5)
@@ -1000,6 +1002,10 @@ class DummyAudio:
 
 # ---------------------------------------------------------------- 本体
 
+class AlreadyRunning(Exception):
+    """起動中にほかの deej-tab が待ち受けを始めた"""
+
+
 class DeejTab:
     def __init__(self, config, audio_factory, catalog=None, system=True):
         """system: OS の仕組み (ホットキー・最前面のアプリの確認) を使うか。テストでは使わない"""
@@ -1011,6 +1017,7 @@ class DeejTab:
         self.clients = set()         # 拡張機能
         self.client_browsers = {}    # {拡張機能の接続: ブラウザのプロセス名 (わからなければ None)}
         self.request_quit = self.shutdown   # --quit で終わる時に呼ぶ。トレイがある時は run_tray がトレイの「終了」に差し替える
+        self.ready = threading.Event()      # WebSocket の待ち受けを始めた (設定画面はこれを待ってから開く)
         self.ui_clients = set()      # 設定画面
         self.ui_joined = asyncio.Event()   # 設定画面がつないできた (開いていない間の ui_pump を起こす)
         self.tab_values = {}         # {slot: 音量} (1.0 = 100%。上限を上げたスライダーは 1 を超える)
@@ -1933,10 +1940,19 @@ class DeejTab:
 
     def _obs_changed(self):
         # ソース一覧が変わったら、設定画面の一覧を送り直す
-        if self.loop is not None:
-            self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self.send_lists()))
+        self.call_in_loop(lambda: asyncio.ensure_future(self.send_lists()))
 
     # ---------- WebSocket ----------
+
+    def call_in_loop(self, fn, *args):
+        """WebSocket のループで fn を呼ぶ。ループが止まった後 (終了中・WebSocket が落ちた) は何もしない。
+        前は Event loop is closed で落ち、トレイの「終了」が icon.stop まで届かずにトレイに残った"""
+        if self.loop is None:
+            return
+        try:
+            self.loop.call_soon_threadsafe(fn, *args)
+        except RuntimeError:
+            pass
 
     def send_tab(self, slot, v):
         self.tab_values[slot] = v
@@ -1945,8 +1961,7 @@ class DeejTab:
     def broadcast(self, msg):
         if self.loop is None:
             return
-        data = json.dumps(msg)
-        self.loop.call_soon_threadsafe(self._broadcast, data)
+        self.call_in_loop(self._broadcast, json.dumps(msg))
 
     def _broadcast(self, data):
         for ws in list(self.clients):
@@ -1963,8 +1978,7 @@ class DeejTab:
     def broadcast_ui(self, msg):
         if self.loop is None:
             return
-        data = json.dumps(msg)
-        self.loop.call_soon_threadsafe(self._broadcast_ui, data)
+        self.call_in_loop(self._broadcast_ui, json.dumps(msg))
 
     def _broadcast_ui(self, data):
         for ws in list(self.ui_clients):
@@ -2488,8 +2502,32 @@ class DeejTab:
                 last = time.monotonic()
                 self._broadcast(json.dumps({"type": "ping"}))
 
+    async def serve_ws(self):
+        """WebSocket の待ち受けを始める。ポートが使われていたら、終わりかけの deej-tab が離すのを PORT_WAIT 秒まで待つ。
+        その間にほかの deej-tab が待ち受けを始めたら AlreadyRunning (二重に動かさない)。
+        前は bind に失敗すると WebSocket だけが止まり、シリアルとトレイが残った。/health に答えないので
+        次の起動が「動いていない」と見て二重に立ち上がり、COM ポートは残った方がつかんだままになった"""
+        port = self.config.ws_port
+        end = time.monotonic() + PORT_WAIT
+        waiting = False
+        while True:
+            try:
+                return await websockets.serve(self.ws_handler, "127.0.0.1", port,
+                                              process_request=self.process_request)
+            except OSError as e:
+                if await asyncio.to_thread(already_running, port):
+                    raise AlreadyRunning(port)
+                if time.monotonic() >= end:
+                    raise
+                if not waiting:
+                    waiting = True
+                    log.info("ポート %d が使われているので、空くのを待ちます: %s", port, e)
+            await asyncio.sleep(0.5)
+
     async def run(self):
         self.loop = asyncio.get_running_loop()
+        # 先にポートを取る (取れないうちにシリアルを開くと、動いている方の COM ポートを奪い合う)
+        server = await self.serve_ws()
         self.audio_thread = threading.Thread(target=self.serial_thread, daemon=True, name="serial")
         self.audio_thread.start()
         if self.system:
@@ -2497,9 +2535,9 @@ class DeejTab:
             self.hotkeys.start()
             self.update_hotkeys()
             threading.Thread(target=self.watch_thread, daemon=True, name="watch").start()
-        async with websockets.serve(self.ws_handler, "127.0.0.1", self.config.ws_port,
-                                    process_request=self.process_request):
+        async with server:
             log.info("WebSocket 待ち受け: ws://127.0.0.1:%d", self.config.ws_port)
+            self.ready.set()
             if not self.config.enabled:
                 log.info("スライダー操作は一時停止中です")
             asyncio.ensure_future(self.ui_pump())
@@ -3203,12 +3241,21 @@ def run_tray(app, port):
 
     def on_quit(icon, item):
         log.info("終了します")
+        # 途中で失敗してもトレイは閉じる。それでも終わらなければ QUIT_GRACE 秒で落とす
+        # (トレイに残ったままだと、次の起動が二重になり、COM ポートも離さない)
+        force = threading.Timer(QUIT_GRACE, lambda: (log.warning("終わらないので強制終了します"), os._exit(0)))
+        force.daemon = True
+        force.start()
         try:
             close_settings_window()
         except Exception as e:
             log.warning("設定画面を閉じられません: %s", e)
-        app.shutdown()
-        icon.stop()
+        try:
+            app.shutdown()
+        except Exception:
+            log.exception("終了の処理に失敗しました")
+        finally:
+            icon.stop()
 
     def on_pause(icon, item):
         try:
@@ -3299,6 +3346,11 @@ def run_tray(app, port):
                 except Exception as e:
                     log.warning("トレイアイコンを確認できません: %s", e)
             app.stop.wait(1.0)
+        # 「終了」以外で止まった時 (WebSocket が落ちた) もトレイを閉じる。「終了」の後なら閉じ済みで、何も起きない
+        try:
+            on_main(icon.stop)
+        except Exception:
+            pass
 
     if IS_MAC:
         import macsys
@@ -3400,9 +3452,26 @@ def main():
             app.shutdown()
         return
 
-    threading.Thread(target=lambda: asyncio.run(app.run()), daemon=True).start()
+    def run_server():
+        # WebSocket が止まったら、トレイとシリアルだけを残さずに終わる
+        try:
+            asyncio.run(app.run())
+        except AlreadyRunning:
+            log.info("ほかの deej-tab が動き始めたので、こちらは終了します")
+            if not tray_only:
+                open_settings(config.ws_port)
+        except Exception:
+            log.exception("WebSocket が止まったので終了します")
+        if not app.stop.is_set():
+            app.request_quit()
+
+    def open_when_ready():
+        if app.ready.wait(PORT_WAIT + 5):
+            open_settings(config.ws_port)
+
+    threading.Thread(target=run_server, daemon=True, name="server").start()
     if not tray_only:
-        threading.Timer(1.0, open_settings, args=(config.ws_port,)).start()
+        threading.Thread(target=open_when_ready, daemon=True).start()
     run_tray(app, config.ws_port)
 
 
