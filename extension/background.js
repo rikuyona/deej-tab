@@ -25,6 +25,9 @@ let values = {};    // { slot: 音量 (1 = 100%。上限を上げたスライダ
 const injected = new Map(); // 方式X: tabId -> スクリプト注入の Promise
 const popups = new Set();   // 開いているポップアップの Port
 const currentTouched = new Map(); // A4 (表示中のタブ) で音量を変えたタブ -> かけた音量 (一時停止の時に戻す・再読み込みでかけ直す)
+// 自動割り当て: 鳴り始めたがまだ割り当てていないタブ -> 割り当てる予定のスロット。
+// 割り当てる (鳴ってから AUTO_DELAY_MS) までも、そのスロットの音量で鳴らす
+const provisional = new Map();
 
 // 100% までは 2 乗のカーブ、超えた分はそのまま (200% = 2 倍)。1 でつながる
 const toGain = (v) => {
@@ -231,6 +234,9 @@ connect();
 // ---------------------------------------------------------------- 音量適用
 
 function applySlot(slot) {
+  if (enabled && values[slot] !== undefined) {
+    for (const [t, s] of provisional) if (s === slot) setMediaVolume(t, toMediaVolume(values[slot]));
+  }
   const tabId = assignments[slot];
   if (tabId === undefined) return;
   if (slotMethod(slot) === 'X') {
@@ -250,6 +256,7 @@ function setEnabled(on) {
   if (!on) {
     for (const t of currentTouched.keys()) resetMedia(t);
     currentTouched.clear();
+    clearProvisional();
   }
   updateIcon();
   pushState();
@@ -275,6 +282,48 @@ async function setMediaVolume(tabId, volume) {
 }
 function resetMedia(tabId) {
   chrome.tabs.sendMessage(tabId, { type: 'deej-reset' }).catch(() => {});
+}
+
+// ページ側のスクリプト (content-media.js) に、このタブに今かける音量を答える。
+// play: 鳴り始めた。自動で割り当てるタブなら、割り当てる予定のスロットを決めて、その音量を答える
+function mediaAnswer(tab, play) {
+  const none = { volume: null, armed: false };
+  if (!tab || tab.id < 0) return none;
+  // manifest の content_scripts で入っている (方式X で音量を送る前に入れ直さない)
+  if (!injected.has(tab.id)) injected.set(tab.id, Promise.resolve(true));
+  if (!enabled) return none;
+  const slot = slotOf(tab.id);
+  if (slot !== undefined) {
+    const x = slotMethod(slot) === 'X' && values[slot] !== undefined;
+    return { volume: x ? toMediaVolume(values[slot]) : null, armed: false };
+  }
+  if (currentTouched.has(tab.id)) return { volume: currentTouched.get(tab.id), armed: false };
+  if (!autoAssign || !isAssignable(tab.url) || freeSlot() === undefined) return none;
+  let s = provisional.get(tab.id);
+  if (s === undefined || assignments[s] !== undefined) s = play ? freeSlot() : undefined;
+  if (s === undefined) return { volume: null, armed: true };   // まだ鳴っていない
+  if (values[s] === undefined) return none;   // 音量がわからない (deej-tab につながっていない)
+  provisional.set(tab.id, s);
+  return { volume: toMediaVolume(values[s]), armed: true };
+}
+
+// 割り当てる予定だったスロットがほかのタブに取られた: 次の空きにする (空きがなければ元の音量に戻す)
+function reprovision(slot) {
+  for (const [t, s] of provisional) {
+    if (s !== slot) continue;
+    const free = freeSlot();
+    if (free === undefined || values[free] === undefined) {
+      provisional.delete(t);
+      resetMedia(t);
+    } else {
+      provisional.set(t, free);
+      setMediaVolume(t, toMediaVolume(values[free]));
+    }
+  }
+}
+function clearProvisional() {
+  for (const t of provisional.keys()) resetMedia(t);
+  provisional.clear();
 }
 
 // 注入中に届いた音量も、注入が終わってから順に送る (同じ Promise を待たせる)。
@@ -339,9 +388,11 @@ async function assign(slot, tabId, auto = false) {
   const from = slotOf(tabId);
   if (from === slot) return;
   if (assignments[slot] !== undefined) await release(slot); // このスロットの前のタブ
-  // A4 (表示中のタブ) で下げていた音量は戻してから、スロットの音量で操作する
-  resetMedia(tabId);
+  // A4 (表示中のタブ) で下げていた音量は、方式Y (キャプチャ) にする時だけ戻す。
+  // 方式X のままならスロットの音量で上書きする (先に戻すと、その間だけ元の音量で鳴る)
+  if (!(method === 'X' || auto)) resetMedia(tabId);
   currentTouched.delete(tabId);
+  provisional.delete(tabId);
   // 自動で割り当てたタブを手で移す時は、ここでキャプチャを始める (方式Yに切り替わる)
   const fromX = from !== undefined && slotMethod(from) === 'X';
   if (method === 'Y' && !auto) {
@@ -368,6 +419,7 @@ async function assign(slot, tabId, auto = false) {
   await saveAssignments();
   setBadge(tabId, slot);
   applySlot(slot);
+  reprovision(slot);
 }
 
 async function unassign(slot) {
@@ -388,6 +440,7 @@ async function setMethod(m) {
 
 async function setAutoAssign(on) {
   autoAssign = !!on;
+  if (!autoAssign) clearProvisional();
   await chrome.storage.local.set({ autoAssign });
 }
 
@@ -404,12 +457,19 @@ function onAudible(tabId) {
       if (!autoAssign || !enabled || slotOf(tabId) !== undefined) return;
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab?.audible || tab.mutedInfo?.muted || !isAssignable(tab.url)) return;
-      const free = [...slots].sort((a, b) => a - b).find((s) => assignments[s] === undefined);
+      // 先に音量をかけていたスロットがまだ空いていればそこへ (鳴っている音量が変わらないように)
+      const pre = provisional.get(tabId);
+      const free = pre !== undefined && assignments[pre] === undefined ? pre : freeSlot();
       if (free === undefined) return;
       await assign(free, tabId, true);
     }).catch((e) => console.warn('deej: 自動で割り当てられません:', explain(e)))
       .finally(pushState);
   }, AUTO_DELAY_MS));
+}
+
+// 空いている一番小さいスロット
+function freeSlot() {
+  return [...slots].sort((a, b) => a - b).find((s) => assignments[s] === undefined);
 }
 
 // 音量を変えられるページか (chrome:// やウェブストア・Edge のアドオンストアは不可。popup.js の isSupported と同じ)
@@ -424,6 +484,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   clearTimeout(autoTimers.get(tabId));
   autoTimers.delete(tabId);
   currentTouched.delete(tabId);
+  provisional.delete(tabId);
   serial(async () => {
     const slot = slotOf(tabId);
     if (slot === undefined) return;
@@ -433,8 +494,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, info) => {
-  // 方式X: ページ移動で注入が消えるので入れ直す
-  if (info.status === 'loading') injected.delete(tabId);
+  // 方式X: ページ移動で注入が消えるので入れ直す (manifest で入るページは、新しいページの media-hello で入ったとわかる)
+  if (info.status === 'loading') {
+    injected.delete(tabId);
+    provisional.delete(tabId);
+  }
   await ready;
   if (info.audible === true) onAudible(tabId);
   // A4 で下げたタブを再読み込みした: ページが変わって音量が元に戻っているので、かけ直す
@@ -493,8 +557,14 @@ chrome.runtime.onConnect.addListener((port) => {
   connect();
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.target === 'offscreen') return;
+  if (msg.type === 'media-hello' || msg.type === 'media-play') {
+    // 方式X のページ側: 読み込み直後と鳴り始めた時に、このタブにかける音量を聞いてくる
+    ready.then(() => sendResponse(mediaAnswer(sender.tab, msg.type === 'media-play')),
+      () => sendResponse({ volume: null, armed: false }));
+    return true;
+  }
   if (msg.type === 'meter-levels') {
     // offscreen が測ったタブの音の大きさを deej-tab へ (LED を音に合わせて光らせる時)
     if (meterOn) wsSend({ type: 'meter', levels: msg.levels });
