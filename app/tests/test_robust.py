@@ -1,5 +1,5 @@
 """軽さと落ちにくさのテスト: シリアルのまとめ読み・スレッドどうしのぶつかり・エラーで止まらないこと・
-起動時の確認・exe から外した Pillow の部品"""
+起動時の確認・ポートが空くのを待つこと・止まったループへの送信・exe から外した Pillow の部品"""
 
 import asyncio
 import os
@@ -397,6 +397,57 @@ class AlreadyRunningTest(unittest.TestCase):
             s.bind(("127.0.0.1", 0))
             s.listen(1)
             self.assertFalse(d.port_free(s.getsockname()[1]))
+
+
+class PortWaitTest(unittest.TestCase):
+    """起動時にポートが使われていたら待つ。前は bind に失敗すると WebSocket だけ止まり、トレイが残って二重起動になった"""
+
+    def setUp(self):
+        self.held = socket.socket()
+        self.held.bind(("127.0.0.1", 0))
+        self.held.listen(1)   # /health には答えない (終わりかけの deej-tab の代わり)
+        self.app = d.DeejTab(make_config(BASE + f"websocket_port: {self.held.getsockname()[1]}\n"), d.DummyAudio, system=False)
+
+    def tearDown(self):
+        self.held.close()
+
+    def serve(self):
+        async def go():
+            server = await self.app.serve_ws()
+            server.close()
+            await server.wait_closed()
+        asyncio.run(go())
+
+    def test_waits_until_port_is_released(self):
+        threading.Timer(0.8, self.held.close).start()
+        start = time.monotonic()
+        with self.assertLogs("deej-tab", "INFO") as logs:
+            self.serve()
+        self.assertGreater(time.monotonic() - start, 0.7)
+        self.assertTrue(any("空くのを待ちます" in m for m in logs.output))
+
+    def test_gives_up_after_port_wait(self):
+        with mock.patch.object(d, "PORT_WAIT", 0.6), self.assertRaises(OSError):
+            self.serve()
+
+    def test_other_instance_started(self):
+        with mock.patch.object(d, "already_running", return_value=True):
+            with self.assertRaises(d.AlreadyRunning):
+                self.serve()
+
+
+class ClosedLoopTest(unittest.TestCase):
+    """WebSocket のループが止まった後も、送る処理で落ちない (トレイの「終了」が途中で止まらないように)"""
+
+    def test_broadcast_after_loop_closed(self):
+        app = d.DeejTab(make_config(), d.DummyAudio, system=False)
+        app.loop = asyncio.new_event_loop()
+        app.loop.close()
+        app.broadcast({"type": "enabled", "value": False})
+        app.broadcast_ui({"type": "ping"})
+        app.send_tab(1, 0.5)
+        app.shutdown()
+        self.assertTrue(app.stop.is_set())
 
 
 @unittest.skipUnless(sys.platform in ("win32", "darwin"), "exe・.app は Windows・Mac で作る")
